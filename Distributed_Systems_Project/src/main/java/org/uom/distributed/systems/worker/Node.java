@@ -1,7 +1,13 @@
 package org.uom.distributed.systems.worker;
 
+import org.uom.distributed.systems.messaging.Message;
+import org.uom.distributed.systems.worker.middleware.IdleState;
+import org.uom.distributed.systems.worker.middleware.MiddlewareType;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Node implements Runnable {
@@ -9,8 +15,12 @@ public class Node implements Runnable {
     private String nodeName;
     private int X_COORDINATE;
     private int Y_COORDINATE;
-    private AtomicInteger ENERGY_LEVEL ;
+    private final AtomicInteger ENERGY_LEVEL ;
+    private final BlockingQueue<Message> messageBlockingQueue
+            = new ArrayBlockingQueue<>(10);
     private final HashMap<String, Node> neighbours;
+    private IMiddleware middleware = new IdleState(this);
+
     public Node(int X, int Y, int ENERGY_LEVEL) {
         this.X_COORDINATE = X;
         this.Y_COORDINATE = Y;
@@ -18,6 +28,14 @@ public class Node implements Runnable {
         this.neighbours = new HashMap<>(10);
         this.nodeName = String.format("%d_%d_%d",X,Y,ENERGY_LEVEL);
     };
+
+    public void setMiddleware(IMiddleware middleware) {
+        this.middleware = middleware;
+    }
+
+    public MiddlewareType getStateType() {
+        return middleware.getMiddlewareType();
+    }
 
     @Override
     public String toString() {
@@ -92,23 +110,32 @@ public class Node implements Runnable {
         this.nodeBullyID = nodeBullyID;
     }
 
+    public void sendMessage(Message message) throws InterruptedException {
+        // what to do if queue is full
+        messageBlockingQueue.put(message);
+    }
+
     @Override
     public void run() {
+        Thread middlewareThread = new Thread(middleware);
         Thread workerThread = new Thread(() -> {
-
-        });
-
-        Thread messageProcessingThread = new Thread(() -> {
-
+            try {
+                while (true) {
+                    Message message = messageBlockingQueue.take();
+                    middleware.handle(message);
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         });
 
         workerThread.start();
-        messageProcessingThread.start();
+        middlewareThread.start();
 
         while (ENERGY_LEVEL.get() > 0) {
             // simulating node power consumption
             try {
-                Thread.sleep(10000);
+                Thread.sleep(1000);
                 ENERGY_LEVEL.decrementAndGet();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);

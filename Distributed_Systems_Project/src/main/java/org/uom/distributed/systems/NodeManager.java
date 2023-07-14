@@ -1,8 +1,11 @@
 package org.uom.distributed.systems;
 
+import org.uom.distributed.systems.messaging.Message;
+import org.uom.distributed.systems.messaging.MessageService;
+import org.uom.distributed.systems.messaging.MessageType;
+import org.uom.distributed.systems.registry.Registry;
 import org.uom.distributed.systems.worker.Node;
-import org.uom.distributed.systems.worker.designation.FollowerNode;
-import org.uom.distributed.systems.worker.designation.LeaderNode;
+import org.uom.distributed.systems.worker.middleware.MiddlewareType;
 
 import java.util.*;
 
@@ -13,10 +16,12 @@ public class NodeManager {
     private static final double RADIUS = 20.0;
     private static final List<Node> NODE_LIST = new ArrayList<>(10);
     private static final Map<Double, Node> LEADER_ELIGIBILITY_MAP = new TreeMap<>(Collections.reverseOrder());
-    private static final List<LeaderNode> leaders = new ArrayList<>();
+    private static final List<Node> leaders = new ArrayList<>();
+    private static final MessageService MESSAGE_SERVICE = new MessageService();
 
-    public static void initiateSystem(int[][] inputs) {
+    public static void initiateSystem(int[][] inputs) throws InterruptedException {
         addNodesToList(inputs);
+        registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
         leaderElection();
         // startNodes();
@@ -31,6 +36,12 @@ public class NodeManager {
         for (int[] ints : inputs) {
             System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints[X], ints[Y], ints[ENERGY_LEVEL]);
             NODE_LIST.add(new Node(ints[X], ints[Y], ints[ENERGY_LEVEL]));
+        }
+    }
+
+    private static void registerNodesInRegistry() {
+        for (Node node : NODE_LIST) {
+            Registry.registerNode(node);
         }
     }
 
@@ -52,11 +63,11 @@ public class NodeManager {
         }
     }
 
-    private static void leaderElection() {
+    private static void leaderElection() throws InterruptedException {
         createClusters();
     }
 
-    private static void createClusters() {
+    private static void createClusters() throws InterruptedException {
         for (Node node : NODE_LIST) {
 
             int numOfNeighbours = node.getCountOfNeighbours();
@@ -84,51 +95,36 @@ public class NodeManager {
             Node node = LEADER_ELIGIBILITY_MAP.get(key);
 
             // skip followers that already in a group or already a leader of a group from leader election
-            if (!isLeader(node) && !isFollower(node)){
+            if (node.getStateType().equals(MiddlewareType.IDLE)){
 
                 // set node with the highest ratio as the leader - means first element is always a leader
                 // This is a leader - form a new cluster around this leader
                 String groupID = UUID.randomUUID().toString();
-                LeaderNode leaderNode = new LeaderNode(node, leaders);
-                leaderNode.setGroupID(groupID);
 
-                List<FollowerNode> groupMembers = new ArrayList<>(10);
+                Message message = new Message(MessageType.ASSIGN);
+                message.addField("TYPE", MiddlewareType.LEADER.toString());
+                message.addField("GROUP_ID", groupID);
+                MESSAGE_SERVICE.sendMessage(node.getNodeName(), message);
 
                 // set that node's neighbours as followers - forming the group
                 for (Map.Entry<String, Node> entry : node.getNeighbours().entrySet()) {
                     Node neighbour = entry.getValue();
 
-                    if (!isFollower(neighbour)) {
-                        FollowerNode followerNode = new FollowerNode(neighbour, groupMembers);
-                        followerNode.setGroupID(groupID);
-                        followerNode.setLeader(leaderNode);
+                    if (node.getStateType().equals(MiddlewareType.IDLE)) {
+                        message = new Message(MessageType.ASSIGN);
+                        message.addField("TYPE", MiddlewareType.FOLLOWER.toString());
+                        message.addField("LEADER", node.getNodeName());
+                        message.addField("GROUP_ID", groupID);
+                        MESSAGE_SERVICE.sendMessage(neighbour.getNodeName(), message);
 
-                        groupMembers.add(followerNode);
-                        leaderNode.addFollower(followerNode);
+                        message = new Message(MessageType.ADD_FOLLOWER);
+                        message.addField("FOLLOWER_NAME", neighbour.getNodeName());
+                        MESSAGE_SERVICE.sendMessage(node.getNodeName(), message);
                     }
                 }
-                leaders.add(leaderNode);
             }
             // continue - if there is left-out nodes then get node with the highest ratio make it as another leader (form new group around that)
         }
-    }
-
-    private static boolean isLeader (Node node) {
-        for (LeaderNode leaderNode : leaders) {
-            if (leaderNode.getNodeName().equals(node.getNodeName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isFollower (Node node) {
-        for (LeaderNode leaderNode : leaders) {
-            if (leaderNode.isFollower(node)) {
-                return true;
-            }
-        }
-        return false;
     }
 
 }
