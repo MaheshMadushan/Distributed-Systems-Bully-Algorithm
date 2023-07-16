@@ -24,7 +24,13 @@ public class NodeManager {
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
         leaderElection();
-        // startNodes();
+         startNodes();
+    }
+
+    private static void startNodes() {
+        for (Node node : NODE_LIST) {
+            new Thread(node).start();
+        }
     }
 
     private static double calculatedEuclideanDistance (Node node1, Node node2) {
@@ -110,7 +116,7 @@ public class NodeManager {
                 for (Map.Entry<String, Node> entry : node.getNeighbours().entrySet()) {
                     Node neighbour = entry.getValue();
 
-                    if (node.getStateType().equals(MiddlewareType.IDLE)) {
+                    if (neighbour.getStateType().equals(MiddlewareType.IDLE)) {
                         message = new Message(MessageType.ASSIGN);
                         message.addField("TYPE", MiddlewareType.FOLLOWER.toString());
                         message.addField("LEADER", node.getNodeName());

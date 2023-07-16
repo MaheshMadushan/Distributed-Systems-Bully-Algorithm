@@ -8,6 +8,7 @@ import org.uom.distributed.systems.worker.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 public class LeaderMiddleware implements IMiddleware {
     private String groupID;
@@ -75,13 +76,15 @@ public class LeaderMiddleware implements IMiddleware {
             case "OK" :
                 System.out.println("OK received for Leader.");
                 break;
-            case "COORDINATOR" :
-                System.out.println("Coordinator received for Leader.");
-                break;
             case "ADD_FOLLOWER" :
                 this.addFollower(fields.get("FOLLOWER_NAME"));
                 System.out.println("Follower added to the leader.");
                 break;
+            case "COORDINATOR" :
+                System.out.println("Coordinator received for Leader.");
+                break;
+            default :
+                fields.forEach((s, s2) -> System.out.println(s+":"+s2));
         }
     }
 

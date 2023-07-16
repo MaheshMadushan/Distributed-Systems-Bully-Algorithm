@@ -13,16 +13,16 @@ class NodeTest {
         Thread thread = new Thread(node);
         thread.start();
         node.setMiddleware(new FollowerMiddleware(node));
-        node.sendMessage(new Message(MessageType.OK, ""));
-        node.sendMessage(new Message(MessageType.COORDINATOR, ""));
-        node.sendMessage(new Message(MessageType.ELECTION, ""));
-        node.sendMessage(new Message(MessageType.TASK, ""));
+        node.receiveMessage(new Message(MessageType.OK));
+        node.receiveMessage(new Message(MessageType.COORDINATOR));
+        node.receiveMessage(new Message(MessageType.ELECTION));
+        node.receiveMessage(new Message(MessageType.TASK));
 
         node.setMiddleware(new LeaderMiddleware(node));
-        node.sendMessage(new Message(MessageType.OK, ""));
-        node.sendMessage(new Message(MessageType.COORDINATOR, ""));
-        node.sendMessage(new Message(MessageType.ELECTION, ""));
-        node.sendMessage(new Message(MessageType.TASK, ""));
+        node.receiveMessage(new Message(MessageType.OK));
+        node.receiveMessage(new Message(MessageType.COORDINATOR));
+        node.receiveMessage(new Message(MessageType.ELECTION));
+        node.receiveMessage(new Message(MessageType.TASK));
 
         thread.join();
     }

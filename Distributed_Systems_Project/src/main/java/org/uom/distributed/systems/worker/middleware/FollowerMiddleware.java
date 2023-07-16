@@ -1,20 +1,22 @@
 package org.uom.distributed.systems.worker.middleware;
 
 import org.uom.distributed.systems.messaging.Message;
-import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 public class FollowerMiddleware implements IMiddleware {
     private final Node host;
     private String groupID;
     private String leader;
     private final List<String> groupMembers;
-    private final MessageService messageService = new MessageService();
+    private final BlockingQueue<Message> messageBlockingQueue
+            = new ArrayBlockingQueue<>(10);
 
     public FollowerMiddleware(Node host) {
         this.host = host;
@@ -37,10 +39,6 @@ public class FollowerMiddleware implements IMiddleware {
         groupMembers.add(groupMember);
     }
 
-    public void onMessage(Message message) throws InterruptedException {
-        host.sendMessage(message);
-    }
-
     @Override
     public MiddlewareType getMiddlewareType() {
         return MiddlewareType.FOLLOWER;
@@ -48,9 +46,9 @@ public class FollowerMiddleware implements IMiddleware {
 
     @Override
     public void handle(Message message) {
+        HashMap<String, String> fields = message.getFields();
         switch (message.getType().name()) {
             case "ASSIGN" :
-                HashMap<String, String> fields = message.getFields();
                 if(fields.get("TYPE").equals("LEADER")) {
                     // graceful termination of follower processes
                     LeaderMiddleware leaderMiddleware = new LeaderMiddleware(host);
@@ -74,6 +72,9 @@ public class FollowerMiddleware implements IMiddleware {
             case "COORDINATOR" :
                 System.out.println("Coordinator received for follower.");
                 break;
+            default :
+                fields.forEach((s, s2) -> System.out.println(s+":"+s2));
+
         }
     }
 
@@ -83,6 +84,9 @@ public class FollowerMiddleware implements IMiddleware {
         // separate thread runs
         // send statistics to the leader
         // graceful termination of follower on elected as leader
-//        while ()
+        int i = 0;
+//        while () {
+//
+//        }
     }
 }

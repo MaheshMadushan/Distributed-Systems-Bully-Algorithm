@@ -6,5 +6,6 @@ public enum MessageType {
     OK,
     COORDINATOR,
     ASSIGN,
+    MISC,
     ADD_FOLLOWER
 }

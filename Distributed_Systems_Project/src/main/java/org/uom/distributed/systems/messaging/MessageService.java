@@ -20,6 +20,6 @@ public class MessageService {
         } else {
             recipientNode = registry.get(recipient);
         }
-        recipientNode.sendMessage(message);
+        recipientNode.receiveMessage(message);
     }
 }
