@@ -1,36 +1,42 @@
 package org.uom.distributed.systems.worker.middleware;
 
+import org.uom.distributed.systems.Config;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
+import org.uom.distributed.systems.messaging.MessageType;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.function.BiConsumer;
+import java.util.concurrent.*;
 
 public class LeaderMiddleware implements IMiddleware {
     private String groupID;
     private final List<String> followers;
     private final List<Node> boardOfExecutives;
-    private Node node;
-    private final MessageService messageService = new MessageService();
+    private final Node host;
 
-    public LeaderMiddleware(Node node) {
-        this.node = node;
+    private final BlockingQueue<Message> messageSendingBlockingQueue = new ArrayBlockingQueue<>(10);
+    private final BlockingQueue<Message> messageReceivingBlockingQueue = new ArrayBlockingQueue<>(10);
+    private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
+
+    public LeaderMiddleware(Node host) {
+        this.host = host;
         this.followers = new ArrayList<>(10);
         this.boardOfExecutives = new ArrayList<>(10);
     }
 
-    public LeaderMiddleware(Node node , List<Node> boardOfExecutives ) {
-        this.node = node;
+    public LeaderMiddleware(Node host , List<Node> boardOfExecutives ) {
+        this.host = host;
         this.followers = new ArrayList<>(10);
         this.boardOfExecutives = boardOfExecutives;
     }
 
     public void setGroupID (String groupID) {
         this.groupID = groupID;
+        MessageService.messageQueuesForClusters.put(groupID, new LinkedTransferQueue<>());
     }
 
     public String getGroupID() {
@@ -57,31 +63,44 @@ public class LeaderMiddleware implements IMiddleware {
             case "ASSIGN" :
                 if(fields.get("TYPE").equals("FOLLOWER")) {
                     // graceful termination of leader processes should handle
-                    FollowerMiddleware followerMiddleware = new FollowerMiddleware(node);
+                    FollowerMiddleware followerMiddleware = new FollowerMiddleware(host);
                     followerMiddleware.setGroupID(fields.get("GROUP_ID"));
                     followerMiddleware.setLeader(fields.get("LEADER"));
-                    node.setMiddleware(followerMiddleware);
-                    System.out.println("Assigned as Follower.");
+                    host.setMiddleware(followerMiddleware);
+                    System.out.println(host.getNodeName() + " " + "Assigned as Follower.");
                 }
                 else {
                     System.out.println("message is discarded");
                 }
                 break;
             case "TASK" :
-                System.out.println("Task received for Leader.");
+                System.out.println(host.getNodeName() + " " + "Task received for Leader.");
                 break;
             case "ELECTION" :
-                System.out.println("Election received for Leader.");
+                System.out.println(host.getNodeName() + " " + "Election received for Leader.");
                 break;
             case "OK" :
-                System.out.println("OK received for Leader.");
-                break;
-            case "ADD_FOLLOWER" :
-                this.addFollower(fields.get("FOLLOWER_NAME"));
-                System.out.println("Follower added to the leader.");
+                System.out.println(host.getNodeName() + " " + "OK received for Leader.");
                 break;
             case "COORDINATOR" :
-                System.out.println("Coordinator received for Leader.");
+                System.out.println(host.getNodeName() + " " + "Coordinator received for Leader.");
+                break;
+            case "ADD_FOLLOWER" :
+                String newFollowerName = fields.get("FOLLOWER_NAME");
+                this.addFollower(newFollowerName);
+                for (String follower : followers) {
+                    if (!newFollowerName.equals(follower)) {
+                        Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower);
+                        addGroupMemberMessage.addField("GROUP_MEMBER_NAME", newFollowerName);
+                        addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID",fields.get("FOLLOWER_BULLY_ID"));
+                        try {
+                            host.sendMessage(addGroupMemberMessage);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+                System.out.println(host.getNodeName() + " " + "Follower added to the leader.");
                 break;
             default :
                 fields.forEach((s, s2) -> System.out.println(s+":"+s2));
@@ -89,8 +108,64 @@ public class LeaderMiddleware implements IMiddleware {
     }
 
     @Override
-    public void run() {
-        // do leader specific sanitation tasks
-        // separate thread runs
+    public void receiveMessage(Message message) {
+        messageReceivingBlockingQueue.add(message);
+    }
+
+
+    @Override
+    public void sendMessage(String recipientAddress, Message message) {
+        messageSendingBlockingQueue.add(message);
+    }
+
+    @Override
+    public void stopProcess() {
+        messageReceivingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
+        messageSendingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
+        executorService.shutdownNow();
+    }
+
+    @Override
+    public void startProcess() {
+        Thread messageReceivingThread = new Thread(() -> {
+            try {
+                while (true) {
+                    Message message = messageReceivingBlockingQueue.take();
+                    if (message.getType().equals(MessageType.INTERRUPT)) {
+                        break;
+                    }
+                    this.handle(message);
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        Thread messageSendingThread = new Thread(() -> {
+            try {
+                while (true) {
+                    Message message = messageSendingBlockingQueue.take();
+                    if (message.getType().equals(MessageType.INTERRUPT)) {
+                        break;
+                    }
+                    host.sendMessage(message);
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        messageReceivingThread.start();
+        messageSendingThread.start();
+
+        executorService.scheduleWithFixedDelay(() -> {
+            for (String follower : followers) {
+                Message beaconMessage = new Message(MessageType.BEACON, follower);
+                try {
+                    host.sendMessage(beaconMessage);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }, Config.UNIT_TIME, Config.UNIT_TIME * 10, TimeUnit.MILLISECONDS);
     }
 }

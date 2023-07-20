@@ -1,5 +1,6 @@
 package org.uom.distributed.systems.worker;
 
+import org.uom.distributed.systems.Config;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.worker.middleware.IdleState;
@@ -17,11 +18,7 @@ public class Node implements Runnable {
     private int X_COORDINATE;
     private int Y_COORDINATE;
     private final AtomicInteger ENERGY_LEVEL ;
-    private final BlockingQueue<Message> messageBlockingQueue
-            = new ArrayBlockingQueue<>(10);
-
-    private final BlockingQueue<Message> taskQueue
-            = new ArrayBlockingQueue<>(10);
+    private final BlockingQueue<Message> taskQueue = new ArrayBlockingQueue<>(10);
     private final MessageService messageService = new MessageService();
     private final HashMap<String, Node> neighbours;
     private IMiddleware middleware = new IdleState(this);
@@ -117,41 +114,47 @@ public class Node implements Runnable {
 
     // simulates node's network interface
     public void receiveMessage(Message message) {
-        middleware.handle(message);
+        middleware.receiveMessage(message);
     }
 
-    public void sendMessage(String recipient, Message message) throws InterruptedException {
+    public void sendMessage(Message message) throws InterruptedException {
         if(ENERGY_LEVEL.addAndGet(-2) > 0)
-            messageService.sendMessage(recipient, message);
+            messageService.sendMessage(message);
     }
 
     @Override
-public void run() {
-        Thread middlewareThread = new Thread(middleware);
+    public void run() {
         Thread workerThread = new Thread(() -> {
-//            try {
-////                while (true) {
-////                    taskQueue.take();
-////                }
-//            } catch (InterruptedException e) {
-//                throw new RuntimeException(e);
-//            }
+            try {
+                while (true) {
+                    taskQueue.take();
+                }
+            } catch (InterruptedException e) {
+                System.out.println("node is shutting down");
+            }
         });
 
         workerThread.start();
-        middlewareThread.start();
 
         while (ENERGY_LEVEL.get() > 0) {
             // simulating node power consumption
             try {
-                Thread.sleep(1000);
+                Thread.sleep(Config.UNIT_TIME);
                 ENERGY_LEVEL.decrementAndGet();
-                System.out.println(this.toString());
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
-        System.out.println("node" + nodeBullyID + " " + "evicted");
-    // send eviction message
+        this.stopRunningMiddlewareProcessGracefully();
+        workerThread.interrupt();
+        System.out.println("node " + nodeName + " " + getStateType() + " evicted");
+    }
+
+    public void stopRunningMiddlewareProcessGracefully() {
+        middleware.stopProcess();
+    }
+
+    public void startNewMiddlewareProcess() {
+        middleware.startProcess();
     }
 }

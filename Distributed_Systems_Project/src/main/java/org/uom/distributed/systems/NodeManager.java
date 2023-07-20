@@ -23,8 +23,8 @@ public class NodeManager {
         addNodesToList(inputs);
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
+        startNodes();
         leaderElection();
-         startNodes();
     }
 
     private static void startNodes() {
@@ -107,25 +107,26 @@ public class NodeManager {
                 // This is a leader - form a new cluster around this leader
                 String groupID = UUID.randomUUID().toString();
 
-                Message message = new Message(MessageType.ASSIGN);
+                Message message = new Message(MessageType.ASSIGN, node.getNodeName());
                 message.addField("TYPE", MiddlewareType.LEADER.toString());
                 message.addField("GROUP_ID", groupID);
-                MESSAGE_SERVICE.sendMessage(node.getNodeName(), message);
+                MESSAGE_SERVICE.sendMessage(message);
 
                 // set that node's neighbours as followers - forming the group
                 for (Map.Entry<String, Node> entry : node.getNeighbours().entrySet()) {
                     Node neighbour = entry.getValue();
 
                     if (neighbour.getStateType().equals(MiddlewareType.IDLE)) {
-                        message = new Message(MessageType.ASSIGN);
+                        message = new Message(MessageType.ASSIGN, neighbour.getNodeName());
                         message.addField("TYPE", MiddlewareType.FOLLOWER.toString());
                         message.addField("LEADER", node.getNodeName());
                         message.addField("GROUP_ID", groupID);
-                        MESSAGE_SERVICE.sendMessage(neighbour.getNodeName(), message);
+                        MESSAGE_SERVICE.sendMessage(message);
 
-                        message = new Message(MessageType.ADD_FOLLOWER);
+                        message = new Message(MessageType.ADD_FOLLOWER, node.getNodeName());
                         message.addField("FOLLOWER_NAME", neighbour.getNodeName());
-                        MESSAGE_SERVICE.sendMessage(node.getNodeName(), message);
+                        message.addField("FOLLOWER_BULLY_ID", String.valueOf(neighbour.getNodeBullyID()));
+                        MESSAGE_SERVICE.sendMessage(message);
                     }
                 }
             }

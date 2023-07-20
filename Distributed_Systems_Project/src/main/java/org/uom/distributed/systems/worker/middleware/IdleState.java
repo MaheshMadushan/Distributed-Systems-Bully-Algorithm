@@ -4,9 +4,7 @@ import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 public class IdleState implements IMiddleware {
     private Node node;
@@ -27,20 +25,37 @@ public class IdleState implements IMiddleware {
                 LeaderMiddleware leaderMiddleware = new LeaderMiddleware(node);
                 leaderMiddleware.setGroupID(fields.get("GROUP_ID"));
                 node.setMiddleware(leaderMiddleware);
-                System.out.println("Assigned as Leader.");
+                node.startNewMiddlewareProcess();
+                System.out.println(node.getNodeName() + " with bully id " + node.getNodeBullyID() + " " + "Assigned as Leader.");
             } else if (fields.get("TYPE").equals("FOLLOWER")) {
                 FollowerMiddleware followerMiddleware = new FollowerMiddleware(node);
                 followerMiddleware.setGroupID(fields.get("GROUP_ID"));
                 followerMiddleware.setLeader(fields.get("LEADER"));
                 node.setMiddleware(followerMiddleware);
-                System.out.println("Assigned as Follower.");
+                node.startNewMiddlewareProcess();
+                System.out.println(node.getNodeName() + " with bully id " + node.getNodeBullyID() + "Assigned as Follower of leader" + " " + fields.get("LEADER"));
             }
         }
     }
 
     @Override
-    public void run() {
-        // do idle specific sanitation tasks
-        // separate thread runs
+    public void receiveMessage(Message message) {
+        this.handle(message);
     }
+
+    @Override
+    public void sendMessage(String recipientAddress, Message message) {
+
+    }
+
+    @Override
+    public void stopProcess() {
+
+    }
+
+    @Override
+    public void startProcess() {
+
+    }
+
 }
