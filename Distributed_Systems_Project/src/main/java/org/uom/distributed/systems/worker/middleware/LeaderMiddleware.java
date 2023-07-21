@@ -18,8 +18,8 @@ public class LeaderMiddleware implements IMiddleware {
     private final List<Node> boardOfExecutives;
     private final Node host;
 
-    private final BlockingQueue<Message> messageSendingBlockingQueue = new ArrayBlockingQueue<>(10);
-    private final BlockingQueue<Message> messageReceivingBlockingQueue = new ArrayBlockingQueue<>(10);
+    private final BlockingQueue<Message> messageSendingBlockingQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<Message> messageReceivingBlockingQueue = new LinkedBlockingQueue<>();
     private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
 
     public LeaderMiddleware(Node host) {
@@ -100,7 +100,7 @@ public class LeaderMiddleware implements IMiddleware {
                         }
                     }
                 }
-                System.out.println(host.getNodeName() + " " + "Follower added to the leader.");
+                System.out.println("Node " + newFollowerName + " Follower added to the leader " + host.getNodeName());
                 break;
             default :
                 fields.forEach((s, s2) -> System.out.println(s+":"+s2));

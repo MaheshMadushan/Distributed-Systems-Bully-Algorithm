@@ -14,13 +14,21 @@ public class NodeManager {
     private static final short Y = 1;
     private static final short ENERGY_LEVEL = 2;
     private static final double RADIUS = 20.0;
-    private static final List<Node> NODE_LIST = new ArrayList<>(10);
+    private static List<Node> NODE_LIST = new ArrayList<>(10);
     private static final Map<Double, Node> LEADER_ELIGIBILITY_MAP = new TreeMap<>(Collections.reverseOrder());
     private static final List<Node> leaders = new ArrayList<>();
     private static final MessageService MESSAGE_SERVICE = new MessageService();
 
     public static void initiateSystem(int[][] inputs) throws InterruptedException {
         addNodesToList(inputs);
+        registerNodesInRegistry();
+        determineEligibleNeighboursForNodes();
+        startNodes();
+        leaderElection();
+    }
+
+    public static void initiateSystem(Node[] inputs) throws InterruptedException {
+        NODE_LIST = Arrays.asList(inputs);
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
         startNodes();
@@ -74,6 +82,7 @@ public class NodeManager {
     }
 
     private static void createClusters() throws InterruptedException {
+        int conflictResoluter = 0;
         for (Node node : NODE_LIST) {
 
             int numOfNeighbours = node.getCountOfNeighbours();
@@ -82,16 +91,17 @@ public class NodeManager {
             double idealEnergyPerNode /* the ratio */ = (double) energyLevelOfTheNode / (numOfNeighbours + 1); // counts self node
 
             if (LEADER_ELIGIBILITY_MAP.containsKey(idealEnergyPerNode)) {
-                LEADER_ELIGIBILITY_MAP.put(idealEnergyPerNode + 1, node); // conflict resolution (given priority as they have arrived (FCFS))
+                conflictResoluter++;
+                LEADER_ELIGIBILITY_MAP.put(idealEnergyPerNode + conflictResoluter, node); // conflict resolution (given priority as they have arrived (FCFS))
             } else {
                 LEADER_ELIGIBILITY_MAP.put(idealEnergyPerNode, node);
             }
         }
 
         // Assign BullyID to nodes to use in bully algorithm
-        int bullyID = 0;
+        int bullyID = LEADER_ELIGIBILITY_MAP.size();
         for (Map.Entry<Double, Node> entry : LEADER_ELIGIBILITY_MAP.entrySet()) {
-            entry.getValue().setNodeBullyID(bullyID++);
+            entry.getValue().setNodeBullyID(bullyID--);
         }
 
         // Clustering with leader election

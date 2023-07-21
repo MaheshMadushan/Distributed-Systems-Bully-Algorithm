@@ -1,21 +1,30 @@
 package org.uom.distributed.systems.worker;
 
-import org.uom.distributed.systems.worker.middleware.FollowerMiddleware;
-import org.uom.distributed.systems.worker.middleware.LeaderMiddleware;
+import org.uom.distributed.systems.NodeManager;
 
 class NodeTest {
     @org.junit.jupiter.api.Test
     void onMessageTest() throws InterruptedException {
-        Node node = new Node(4,4,40);
+        Node[] nodes = {
+                new Node(4,1,4000),
+                new Node(4,2,4000),
+                new Node(4,3,4000),
+                new Node(3,4,4000),
+                new Node(2,4,4000),
+                new Node(1,4,4000)
+        };
 
-        Thread thread = new Thread(node);
-        node.setMiddleware(new FollowerMiddleware(node));
-        thread.start();
-        node.startNewMiddlewareProcess();
+        NodeManager.initiateSystem(nodes);
 
-        node.stopRunningMiddlewareProcessGracefully();
-        node.setMiddleware(new LeaderMiddleware(node));
-        node.startNewMiddlewareProcess();
+
+//        Thread thread = new Thread(node);
+//        node.setMiddleware(new FollowerMiddleware(node));
+//        thread.start();
+//        node.startNewMiddlewareProcess();
+//
+//        node.stopRunningMiddlewareProcessGracefully();
+//        node.setMiddleware(new LeaderMiddleware(node));
+//        node.startNewMiddlewareProcess();
 //        node.restartMiddlewareThread();
 //        node.receiveMessage(new Message(MessageType.OK, recipient));
 //        node.receiveMessage(new Message(MessageType.COORDINATOR, recipient));
@@ -28,6 +37,16 @@ class NodeTest {
 //        node.receiveMessage(new Message(MessageType.ELECTION, recipient));
 //        node.receiveMessage(new Message(MessageType.TASK, recipient));
 
-        thread.join();
+
+
+
+        Thread.sleep(4000);
+        nodes[5].kill();
+        Thread.sleep(150000);
+        nodes[4].kill();
+        Thread.sleep(9000);
+        nodes[3].kill();
+        Thread.sleep(Integer.MAX_VALUE);
+
     }
 }

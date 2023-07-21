@@ -130,7 +130,7 @@ public class Node implements Runnable {
                     taskQueue.take();
                 }
             } catch (InterruptedException e) {
-                System.out.println("node is shutting down");
+                System.out.println("node " + nodeName + " is shutting down");
             }
         });
 
@@ -156,5 +156,9 @@ public class Node implements Runnable {
 
     public void startNewMiddlewareProcess() {
         middleware.startProcess();
+    }
+
+    public void kill() {
+        this.setEnergyLevel(0);
     }
 }

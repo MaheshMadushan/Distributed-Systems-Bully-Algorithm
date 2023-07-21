@@ -7,9 +7,9 @@ public class Message {
     private final HashMap<String, String> fields;
     private final String recipient;
 
-    public Message(MessageType messageType, String recipientOrGroupID) {
+    public Message(MessageType messageType, String recipient) {
         this.messageType = messageType;
-        this.recipient = recipientOrGroupID;
+        this.recipient = recipient;
         this.fields = new HashMap<>(10);
     }
     public MessageType getType() {
