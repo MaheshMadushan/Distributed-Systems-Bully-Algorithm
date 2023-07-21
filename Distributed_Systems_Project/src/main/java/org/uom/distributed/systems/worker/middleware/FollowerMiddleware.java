@@ -1,6 +1,8 @@
 package org.uom.distributed.systems.worker.middleware;
 
-import org.uom.distributed.systems.Config;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.uom.distributed.systems.Utilities.Timer;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageType;
 import org.uom.distributed.systems.worker.IMiddleware;
@@ -9,11 +11,14 @@ import org.uom.distributed.systems.worker.Node;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class FollowerMiddleware implements IMiddleware {
+    public static Logger LOGGER = LoggerFactory.getLogger(FollowerMiddleware.class);
+
     private final Node host;
     private String groupID;
     private String leader;
@@ -23,132 +28,140 @@ public class FollowerMiddleware implements IMiddleware {
     private final BlockingQueue<Message> messageSendingBlockingQueue
             = new LinkedBlockingQueue<>();
     private final AtomicInteger counter = new AtomicInteger(15);
-    private final AtomicBoolean timerInterrupted = new AtomicBoolean(false);
+    private final Timer timer = new Timer(15);
+    private final AtomicBoolean timerThreadInterrupted = new AtomicBoolean(false);
     private final AtomicBoolean electionInProgress = new AtomicBoolean(false);
     private final AtomicBoolean isCandidate = new AtomicBoolean(false);
     private final AtomicBoolean processIsActive = new AtomicBoolean(false);
     private final Thread timerThread;
     private final Object lock = new Object();
-
+    private final BlockingQueue<Message> electionDecisionCommunicationBlockinqQueue =
+            new LinkedBlockingQueue<>();
 
     public FollowerMiddleware(Node host) {
         this.host = host;
         this.groupMembers = new HashMap<>(10);
         this.timerThread = new Thread(() -> {
-            while (!timerInterrupted.get()) {
-                try {
-                    Thread.sleep(Config.UNIT_TIME);
-                    counter.decrementAndGet();
-                    if (counter.get() == 0) {
-                        synchronized (lock) {
-                            if (counter.get() == 0) {
-                                System.out.println(
-                                        host.getStateType() + " node " + host.getNodeName() + " received beacon " + (15 - counter.get()) + " seconds ago."
-                                        + " assuming leader is unresponsive."
-                                );
+            while (!timerThreadInterrupted.get()) {
+                timer.start();
+                synchronized (lock) {
+                    LOGGER.info(host.getStateType() + " node " + host.getNodeName() + " received beacon " + 15 + " seconds ago."
+                                    + " assuming leader is unresponsive."
+                    );
 
-                                List<Map.Entry<Integer, String>> bullies = groupMembers
-                                        .entrySet()
-                                        .stream()
-                                        .filter(
-                                                groupMemberIDAndNodeAddress -> groupMemberIDAndNodeAddress.getKey() > this.host.getNodeBullyID()
-                                        )
-                                        .collect(Collectors.toList());
+                    List<Map.Entry<Integer, String>> bullies = groupMembers
+                            .entrySet()
+                            .stream()
+                            .filter(
+                                    groupMemberIDAndNodeAddress -> groupMemberIDAndNodeAddress.getKey() > this.host.getNodeBullyID()
+                            )
+                            .collect(Collectors.toList());
 
-                                Message message;
+                    Message message;
 
-                                if (groupMembers.isEmpty()) {
-                                    // assigning itself as the leader since no other group members
-                                    message = new Message(MessageType.ASSIGN, host.getNodeName());
-                                    message.addField("TYPE", MiddlewareType.LEADER.toString());
-                                    message.addField("GROUP_ID", groupID);
-                                    System.out.println(message);
-                                    host.sendMessage(message);
-                                    timerInterrupted.set(true);
-                                } else if (bullies.isEmpty()) {
-                                    // im the leader since no bully id greater than mine is presents
-                                    isCandidate.set(false);
-                                    for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
-                                        message = new Message(MessageType.COORDINATOR, innocentIDAndNodeAddress.getValue());
-                                        message.addField("NEW_LEADER", this.host.getNodeName());
-                                        host.sendMessage(message);
-                                    }
-                                } else {
-                                    electionInProgress.set(true);
-                                    isCandidate.set(true);
-                                    // there are bully ids greater than mine and start the election
-                                    for (Map.Entry<Integer, String> bullyIDAndAddress : bullies) {
-                                        message = new Message(MessageType.ELECTION, bullyIDAndAddress.getValue());
-                                        message.addField("CANDIDATE_BULLY_ID", String.valueOf(host.getNodeBullyID()));
-                                        message.addField("SENDER", host.getNodeName());
-                                        System.out.println(message);
-                                        host.sendMessage(message);
-                                    }
+                    if (bullies.isEmpty()) {
+                        // im the leader since no bully id greater than mine is presents
+                        isCandidate.set(true);
+                        electionInProgress.set(true);
 
-                                    Thread electionHandlingThread = new Thread(this::handleElection);
+                        for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
+                            message = new Message(MessageType.OK, innocentIDAndNodeAddress.getValue());
+                            host.sendMessage(message);
 
-                                    electionHandlingThread.start();
-                                }
-                            }
+                            message = new Message(MessageType.COORDINATOR, innocentIDAndNodeAddress.getValue());
+                            message.addField("NEW_LEADER", this.host.getNodeName());
+                            host.sendMessage(message);
                         }
-                        while (electionInProgress.get()) {
+
+                        StringBuilder followers = new StringBuilder();
+                        groupMembers.values().stream().iterator().forEachRemaining((i) -> {
+                            followers.append(i);
+                            followers.append(",");
+                        });
+
+                        Message assignMessage = new Message(MessageType.ASSIGN, this.host.getNodeName())
+                                .addField("TYPE", MiddlewareType.LEADER.toString())
+                                .addField("GROUP_ID", groupID)
+                                .addField("FOLLOWERS", followers.toString());
+                        host.sendMessage(assignMessage);
+
+                        isCandidate.set(false);
+                        electionInProgress.set(false);
+
+                        timerThreadInterrupted.set(true);
+                        processIsActive.set(false); // deactivate follower process
+
+                        break;
+                    } else {
+                        if(!isCandidate.get() && !electionInProgress.get()) {
+                            LOGGER.info(host.getNodeName() + " in a election");
+                            electionInProgress.set(true);
+                            isCandidate.set(true);
+                            // there are bully ids greater than mine and start the election
+                            for (Map.Entry<Integer, String> bullyIDAndAddress : bullies) {
+                                message = new Message(MessageType.ELECTION, bullyIDAndAddress.getValue());
+                                message.addField("CANDIDATE_BULLY_ID", String.valueOf(host.getNodeBullyID()));
+
+                                host.sendMessage(message);
+                            }
+
+                            electionDecisionCommunicationBlockinqQueue.clear(); // clear comm channel for the new thread process
+                            Thread electionHandlingThread = new Thread(this::handleElection, this.host.getNodeName() + "-TimerThread-ElectionHandlingThread");
+                            electionHandlingThread.start();
 
                         }
                     }
-                } catch (InterruptedException e) {
-                    System.out.println("timer thread is shutting down");
+                }
+                while (electionInProgress.get()) {
+
                 }
             }
-        });
-
+        }, this.host.getNodeName() + "-TimerThread");
     }
 
     private void handleElection() {
 
-        // let 5 seconds for bully to answer
+        // let 5 seconds for bully to answer via an OK or COORDINATOR
         // if not self promote to leader
-        System.out.println("Election handling thread started for node " + host.getNodeName());
-        for (int i = 0; i < 5; i++) {
-            try {
-                Thread.sleep(Config.UNIT_TIME);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+        LOGGER.info("Election handling thread started for node " + host.getNodeName());
+        Message message;
+        try {
+            message = electionDecisionCommunicationBlockinqQueue.poll(5000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
-        if (isCandidate.get() && electionInProgress.get()) {
-            System.out.println("Elected this node " + host.getNodeName());
-            Message assignMessage = new Message(MessageType.ASSIGN, host.getNodeName());
-            assignMessage.addField("TYPE", MiddlewareType.LEADER.toString());
-            assignMessage.addField("GROUP_ID", groupID);
+        if (isCandidate.get() && electionInProgress.get() && message == null) {
+            LOGGER.info("Elected this node " + host.getNodeName() + " since still no OK or COORDINATOR message received");
+
             StringBuilder followers = new StringBuilder();
             groupMembers.values().stream().iterator().forEachRemaining((i) -> {
                 followers.append(i);
                 followers.append(",");
             });
-            assignMessage.addField("FOLLOWERS", followers.toString());
-            System.out.println(assignMessage);
-            try {
-                host.sendMessage(assignMessage);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+
+            Message assignMessage = new Message(MessageType.ASSIGN, this.host.getNodeName())
+                    .addField("TYPE", MiddlewareType.LEADER.toString())
+                    .addField("GROUP_ID", groupID)
+                    .addField("FOLLOWERS", followers.toString());
+            host.sendMessage(assignMessage);
+
             for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
                 Message coordMessage = new Message(MessageType.COORDINATOR, innocentIDAndNodeAddress.getValue());
                 coordMessage.addField("NEW_LEADER", this.host.getNodeName());
-                try {
-                    host.sendMessage(coordMessage);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                host.sendMessage(coordMessage);
             }
         } else {
-            System.out.println("Not Elected this node " + host.getNodeName());
+            if (message != null) {
+                LOGGER.info(host.getNodeName() + " " + message + (isCandidate.get() ? " and still a candidate" : "") + (electionInProgress.get() ? " and still election is going on." : ""));
+                LOGGER.info("Not Elected this node " + host.getNodeName() + " since " + message.getFields().get("MESSAGE_TYPE") + " received");
+            } else {
+                LOGGER.info(host.getNodeName() + " <- Not Elected this node since timeout and election is over or/and this node not a candidate ");
+            }
         }
-        System.out.println("Exiting election handling thread of node " + host.getNodeName());
-        isCandidate.set(false);
         electionInProgress.set(false);
-
+        isCandidate.set(false);
+        LOGGER.info("Exiting election handling thread of node " + host.getNodeName());
     }
 
     public void setLeader(String leader) {
@@ -171,18 +184,19 @@ public class FollowerMiddleware implements IMiddleware {
     public MiddlewareType getMiddlewareType() {
         return MiddlewareType.FOLLOWER;
     }
-    public void stopProcess() {
+    public synchronized void stopProcess() {
         messageReceivingBlockingQueue.add(new Message(MessageType.INTERRUPT, null)); // Poison pill strategy
         messageSendingBlockingQueue.add(new Message(MessageType.INTERRUPT, null)); // Poison pill strategy
         while (timerThread.isAlive()) {
-            timerInterrupted.set(true);
+            timerThreadInterrupted.set(true);
             timerThread.interrupt();
         };
         processIsActive.set(false);
+        LOGGER.info(host.getNodeName() + " follower process shutting down");
     }
 
     @Override
-    public void startProcess() {
+    public synchronized void startProcess() {
         processIsActive.set(true);
         Thread messageReceivingThread = new Thread(() -> {
             try {
@@ -196,7 +210,7 @@ public class FollowerMiddleware implements IMiddleware {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, this.host.getNodeName() + "-Follower-messageReceivingThread");
         Thread messageSendingThread = new Thread(() -> {
             try {
                 while (true) {
@@ -209,7 +223,7 @@ public class FollowerMiddleware implements IMiddleware {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, this.host.getNodeName() + "-Follower-messageSendingThread");
 
         messageReceivingThread.start();
         messageSendingThread.start();
@@ -226,30 +240,36 @@ public class FollowerMiddleware implements IMiddleware {
                     LeaderMiddleware leaderMiddleware = new LeaderMiddleware(host);
                     leaderMiddleware.setGroupID(fields.get("GROUP_ID"));
                     if(fields.containsKey("FOLLOWERS")) {
-                        String[] a = fields.get("FOLLOWERS").split(",");
-                        for (String g : a) {
-                            leaderMiddleware.addFollower(g);
+                        String[] followers = fields.get("FOLLOWERS").split(",");
+                        for (String follower : followers) {
+                            leaderMiddleware.addFollower(follower);
                         }
                     }
                     host.stopRunningMiddlewareProcessGracefully();
                     host.setMiddleware(leaderMiddleware);
                     host.startNewMiddlewareProcess();
-                    System.out.println(host.getNodeName() + " Assigned as Leader");
+                    LOGGER.info(host.getNodeName() + " Assigned as Leader");
                 }
                 break;
             case "TASK" :
-                System.out.println(host.getNodeName() + " " + "Task received for follower");
+                LOGGER.info(host.getNodeName() + " " + "Task received for follower");
                 break;
             case "ELECTION" :
                 synchronized (lock) {
-                    if (Integer.parseInt(fields.get("CANDIDATE_BULLY_ID")) < host.getNodeBullyID()) {
+
+                    LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for " + host.getNodeName());
+
+                    int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
+                    if (electionInitiatorBullyID < host.getNodeBullyID()) {
                         message = new Message(MessageType.OK, fields.get("SENDER"));
-                        message.addField("NEW_LEADER", this.host.getNodeName());
                         host.sendMessage(message);
 
-                        if (!electionInProgress.get() && !isCandidate.get()) {
+                        if (!electionInProgress.get() && !isCandidate.get() && processIsActive.get()) {
                             isCandidate.set(true);
                             electionInProgress.set(true);
+
+                            LOGGER.info(host.getNodeName() + " in a election");
+
                             List<Map.Entry<Integer, String>> bullies = groupMembers
                                     .entrySet()
                                     .stream()
@@ -260,36 +280,54 @@ public class FollowerMiddleware implements IMiddleware {
                             for (Map.Entry<Integer, String> bullyIDAndAddress : bullies) {
                                 message = new Message(MessageType.ELECTION, bullyIDAndAddress.getValue());
                                 message.addField("CANDIDATE_BULLY_ID", String.valueOf(host.getNodeBullyID()));
-                                message.addField("SENDER", host.getNodeName());
-                                System.out.println(message);
+
                                 host.sendMessage(message);
                             }
 
-                            Thread electionHandlingThread = new Thread(this::handleElection);
-
+                            electionDecisionCommunicationBlockinqQueue.clear();
+                            Thread electionHandlingThread = new Thread(this::handleElection, this.host.getNodeName() + "-Election-ElectionHandlingThread");
                             electionHandlingThread.start();
+
                         } else {
-                            System.out.println("Election is already in progress in " + host.getNodeName() + " and this node is a candidate when receiving ELECTION message");
+                            if (!processIsActive.get()) {
+                                LOGGER.info(host.getNodeName() + " <- this node has not started Election even after received ELECTION from " + fields.get("SENDER") + " since follower middleware process is deactivated");
+                            }
+                            LOGGER.info(host.getNodeName() + " <- this node has Election is already in progress or moved to a leader process  or/and this node is a candidate when receiving ELECTION from " + fields.get("SENDER"));
                         }
 
-                    } else {
-                        throw new RuntimeException("Critical error. Candidate BullyIDs are equal or greater than this node bully id. system shutting down");
                     }
-                    System.out.println(host.getNodeName() + " Election received for follower");
                     break;
                 }
             case "OK" :
-                isCandidate.set(false);
-                System.out.println(host.getNodeName() + " OK received for follower");
-                break;
+                synchronized (lock) {
+                    if (electionInProgress.get()) {
+                        Message message1 = new Message(MessageType.INTERRUPT, "internal");
+                        message1.addField("MESSAGE_TYPE", MessageType.OK.name()).addField("SENDER", fields.get("SENDER"));
+                        electionDecisionCommunicationBlockinqQueue.add(message1);
+                    }
+
+                    isCandidate.set(false);
+                    timer.reset();
+
+                    LOGGER.info(host.getNodeName() + " follower received OK for from " + fields.get("SENDER"));
+                    break;
+                }
             case "COORDINATOR" :
                 synchronized (lock) {
+                    if (electionInProgress.get()) {
+                        Message message1 = new Message(MessageType.INTERRUPT, "internal");
+                        message1.addField("MESSAGE_TYPE", MessageType.COORDINATOR.name()).addField("SENDER", fields.get("SENDER"));
+                        electionDecisionCommunicationBlockinqQueue.add(message1);
+                    }
+
+                    timer.reset();
                     electionInProgress.set(false);
-                    counter.set(15);
+
+                    LOGGER.info(host.getNodeName() + " exited from the election since COORDINATOR received");
                     if (host.getNodeName().equals(message.getRecipientOrGroupID())) {
                         this.setLeader(fields.get("NEW_LEADER"));
                     }
-                    System.out.println(host.getNodeName() + " Coordinator received for follower : NEW_LEADER is " + this.leader);
+                    LOGGER.info(host.getNodeName() + " this follower received Coordinator from " + fields.get("SENDER") + " : NEW_LEADER is " + this.leader);
                     break;
                 }
             case "ADD_GROUP_MEMBER" :
@@ -327,15 +365,23 @@ public class FollowerMiddleware implements IMiddleware {
                     host.sendMessage(addMeToNewGroupMemberMessage);
                 }
 
-                System.out.println("adding member " + newGroupMemberAddress + " with bully id " + newGroupMemberBullyID + " to node " + host.getNodeName() + " as group member.");
+                LOGGER.info("adding member " + newGroupMemberAddress + " with bully id " + newGroupMemberBullyID + " to node " + host.getNodeName() + " as group member.");
                 break;
             case "BEACON" :
-                // reset counter
-                counter.set(15);
-                System.out.println("Follower " + host.getNodeName() + " : Beacon received from the leader : " + leader);
-                break;
+                // reset timer
+                synchronized(lock) {
+                    if (electionInProgress.get()) {
+                        Message message1 = new Message(MessageType.INTERRUPT, "internal");
+                        message1.addField("MESSAGE_TYPE", MessageType.BEACON.name()).addField("SENDER", fields.get("SENDER"));
+                        electionDecisionCommunicationBlockinqQueue.add(message1);
+                    }
+                    electionInProgress.set(false);
+                    timer.reset();
+                    LOGGER.info("Follower " + host.getNodeName() + " : Beacon received from the leader : " + leader);
+                    break;
+                }
             default :
-                fields.forEach((s, s2) -> System.out.println(s+":"+s2));
+                fields.forEach((s, s2) -> LOGGER.info(s+":"+s2));
 
         }
     }

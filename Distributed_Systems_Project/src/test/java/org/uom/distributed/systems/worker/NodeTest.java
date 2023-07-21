@@ -40,12 +40,12 @@ class NodeTest {
 
 
 
-        Thread.sleep(4000);
+        Thread.sleep(1000);
         nodes[5].kill();
-        Thread.sleep(150000);
-        nodes[4].kill();
-        Thread.sleep(9000);
-        nodes[3].kill();
+        Thread.sleep(16000);
+//        nodes[4].kill();
+//        Thread.sleep(19000);
+//        nodes[3].kill();
         Thread.sleep(Integer.MAX_VALUE);
 
     }

@@ -1,5 +1,7 @@
 package org.uom.distributed.systems.worker.middleware;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
@@ -10,35 +12,31 @@ import org.uom.distributed.systems.worker.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public class LeaderMiddleware implements IMiddleware {
+    public static Logger LOGGER = LoggerFactory.getLogger(LeaderMiddleware.class);
     private String groupID;
     private final List<String> followers;
     private final List<Node> boardOfExecutives;
     private final Node host;
-
     private final BlockingQueue<Message> messageSendingBlockingQueue = new LinkedBlockingQueue<>();
     private final BlockingQueue<Message> messageReceivingBlockingQueue = new LinkedBlockingQueue<>();
     private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
+    private final AtomicBoolean processIsActive = new AtomicBoolean(false);
 
     public LeaderMiddleware(Node host) {
         this.host = host;
         this.followers = new ArrayList<>(10);
         this.boardOfExecutives = new ArrayList<>(10);
     }
-
-    public LeaderMiddleware(Node host , List<Node> boardOfExecutives ) {
-        this.host = host;
-        this.followers = new ArrayList<>(10);
-        this.boardOfExecutives = boardOfExecutives;
-    }
-
     public void setGroupID (String groupID) {
         this.groupID = groupID;
         MessageService.messageQueuesForClusters.put(groupID, new LinkedTransferQueue<>());
     }
-
     public String getGroupID() {
         return groupID;
     }
@@ -67,23 +65,30 @@ public class LeaderMiddleware implements IMiddleware {
                     followerMiddleware.setGroupID(fields.get("GROUP_ID"));
                     followerMiddleware.setLeader(fields.get("LEADER"));
                     host.setMiddleware(followerMiddleware);
-                    System.out.println(host.getNodeName() + " " + "Assigned as Follower.");
+                    LOGGER.info(host.getNodeName() + " " + "Assigned as Follower.");
                 }
                 else {
-                    System.out.println("message is discarded");
+                    LOGGER.info("message is discarded");
                 }
                 break;
             case "TASK" :
-                System.out.println(host.getNodeName() + " " + "Task received for Leader.");
+                LOGGER.info(host.getNodeName() + " " + "Task received for Leader.");
                 break;
             case "ELECTION" :
-                System.out.println(host.getNodeName() + " " + "Election received for Leader.");
+                LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for " + host.getNodeName());
+
+                int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
+                if (electionInitiatorBullyID < host.getNodeBullyID()) {
+                    message = new Message(MessageType.COORDINATOR, fields.get("SENDER"));
+                    host.sendMessage(message);
+                }
+                LOGGER.info("Leader " + host.getNodeName() + " received Election message.");
                 break;
             case "OK" :
-                System.out.println(host.getNodeName() + " " + "OK received for Leader.");
+                LOGGER.info(host.getNodeName() + " " + "OK received for Leader.");
                 break;
             case "COORDINATOR" :
-                System.out.println(host.getNodeName() + " " + "Coordinator received for Leader.");
+                LOGGER.info(host.getNodeName() + " " + "Coordinator received for Leader.");
                 break;
             case "ADD_FOLLOWER" :
                 String newFollowerName = fields.get("FOLLOWER_NAME");
@@ -93,40 +98,45 @@ public class LeaderMiddleware implements IMiddleware {
                         Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower);
                         addGroupMemberMessage.addField("GROUP_MEMBER_NAME", newFollowerName);
                         addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID",fields.get("FOLLOWER_BULLY_ID"));
-                        try {
-                            host.sendMessage(addGroupMemberMessage);
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException(e);
-                        }
+                        host.sendMessage(addGroupMemberMessage);
                     }
                 }
-                System.out.println("Node " + newFollowerName + " Follower added to the leader " + host.getNodeName());
+                LOGGER.info("Node " + newFollowerName + " Follower added to the leader " + host.getNodeName());
                 break;
             default :
-                fields.forEach((s, s2) -> System.out.println(s+":"+s2));
+                fields.forEach((s, s2) -> LOGGER.info(s+":"+s2));
         }
     }
 
     @Override
     public void receiveMessage(Message message) {
-        messageReceivingBlockingQueue.add(message);
+        if(processIsActive.get()) messageReceivingBlockingQueue.add(message);
     }
-
 
     @Override
     public void sendMessage(String recipientAddress, Message message) {
-        messageSendingBlockingQueue.add(message);
+        if(processIsActive.get()) messageSendingBlockingQueue.add(message);
     }
 
     @Override
-    public void stopProcess() {
-        messageReceivingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
-        messageSendingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
-        executorService.shutdownNow();
+    public synchronized void stopProcess() {
+        if (processIsActive.get()) {
+            messageReceivingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
+            messageSendingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
+            executorService.shutdownNow();
+            processIsActive.set(false);
+            LOGGER.info(host.getNodeName() + " leader process shutting down");
+        }
     }
 
     @Override
-    public void startProcess() {
+    public synchronized void startProcess() {
+        LOGGER.info(host.getNodeName() + " leader process starting");
+        if (!processIsActive.get())
+            processIsActive.set(true);
+        else
+            return;
+
         Thread messageReceivingThread = new Thread(() -> {
             try {
                 while (true) {
@@ -139,7 +149,7 @@ public class LeaderMiddleware implements IMiddleware {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, this.host.getNodeName() + "-Leader-messageReceivingThread");
         Thread messageSendingThread = new Thread(() -> {
             try {
                 while (true) {
@@ -152,20 +162,18 @@ public class LeaderMiddleware implements IMiddleware {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, this.host.getNodeName() + "-Leader-messageSendingThread");
 
         messageReceivingThread.start();
         messageSendingThread.start();
 
         executorService.scheduleWithFixedDelay(() -> {
+            LOGGER.info(host.getNodeName() + " leader process beacon activated");
+            LOGGER.info(host.getNodeName() + " followers " + followers);
             for (String follower : followers) {
                 Message beaconMessage = new Message(MessageType.BEACON, follower);
-                try {
-                    host.sendMessage(beaconMessage);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                host.sendMessage(beaconMessage);
             }
-        }, Config.UNIT_TIME, Config.UNIT_TIME * 10, TimeUnit.MILLISECONDS);
+        }, 0, Config.UNIT_TIME * 10, TimeUnit.MILLISECONDS);
     }
 }

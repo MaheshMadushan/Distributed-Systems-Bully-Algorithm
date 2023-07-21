@@ -1,5 +1,7 @@
 package org.uom.distributed.systems.worker;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
@@ -13,6 +15,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Node implements Runnable {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
     private long nodeBullyID;
     private String nodeName;
     private int X_COORDINATE;
@@ -117,9 +120,12 @@ public class Node implements Runnable {
         middleware.receiveMessage(message);
     }
 
-    public void sendMessage(Message message) throws InterruptedException {
-        if(ENERGY_LEVEL.addAndGet(-2) > 0)
+    public void sendMessage(Message message)  {
+        if(ENERGY_LEVEL.addAndGet(-2) > 0) {
+            message.addField("SENDER", this.getNodeName());
+            LOGGER.info(message.toString());
             messageService.sendMessage(message);
+        }
     }
 
     @Override
@@ -130,9 +136,9 @@ public class Node implements Runnable {
                     taskQueue.take();
                 }
             } catch (InterruptedException e) {
-                System.out.println("node " + nodeName + " is shutting down");
+                LOGGER.info("node " + nodeName + " is shutting down");
             }
-        });
+        }, this.getNodeName() + "-WorkerThread");
 
         workerThread.start();
 
@@ -147,7 +153,7 @@ public class Node implements Runnable {
         }
         this.stopRunningMiddlewareProcessGracefully();
         workerThread.interrupt();
-        System.out.println("node " + nodeName + " " + getStateType() + " evicted");
+        LOGGER.info("node " + nodeName + " " + getStateType() + " evicted");
     }
 
     public void stopRunningMiddlewareProcessGracefully() {
