@@ -1,5 +1,6 @@
 package org.uom.distributed.systems.worker.middleware;
 
+import org.json.JSONObject;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
@@ -26,6 +27,12 @@ public class IdleState implements IMiddleware {
                 leaderMiddleware.setGroupID(fields.get("GROUP_ID"));
                 host.setMiddleware(leaderMiddleware);
                 host.startNewMiddlewareProcess();
+                JSONObject response = new JSONObject()
+                        .put("MESSAGE_TYPE", "INITIAL_GROUPING")
+                        .put("ASSIGNED_AS", "LEADER")
+                        .put("NODE_NAME", host.getNodeName())
+                        .put("GROUP_ID", fields.get("GROUP_ID"));
+                this.host.getWebSocketServer().broadcast(response.toString());
                 System.out.println(host.getNodeName() + " with bully id " + host.getNodeBullyID() + " " + "Assigned as Leader.");
             } else if (fields.get("TYPE").equals("FOLLOWER")) {
                 FollowerMiddleware followerMiddleware = new FollowerMiddleware(host);
@@ -33,6 +40,13 @@ public class IdleState implements IMiddleware {
                 followerMiddleware.setLeader(fields.get("LEADER"));
                 host.setMiddleware(followerMiddleware);
                 host.startNewMiddlewareProcess();
+                JSONObject response = new JSONObject()
+                        .put("MESSAGE_TYPE", "INITIAL_GROUPING")
+                        .put("ASSIGNED_AS", "FOLLOWER")
+                        .put("LEADER", fields.get("LEADER"))
+                        .put("NODE_NAME", host.getNodeName())
+                        .put("GROUP_ID", fields.get("GROUP_ID"));
+                this.host.getWebSocketServer().broadcast(response.toString());
                 System.out.println(host.getNodeName() + " with bully id " + host.getNodeBullyID() + "Assigned as Follower of leader" + " " + fields.get("LEADER"));
             }
         }
@@ -56,6 +70,11 @@ public class IdleState implements IMiddleware {
     @Override
     public void startProcess() {
 
+    }
+
+    @Override
+    public String getGroupID() {
+        return null;
     }
 
 }

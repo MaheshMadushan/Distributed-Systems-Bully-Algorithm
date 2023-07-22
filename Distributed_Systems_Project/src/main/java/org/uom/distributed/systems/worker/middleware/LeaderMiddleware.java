@@ -1,5 +1,6 @@
 package org.uom.distributed.systems.worker.middleware;
 
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
@@ -20,7 +21,7 @@ import java.util.stream.Collectors;
 public class LeaderMiddleware implements IMiddleware {
     public static Logger LOGGER = LoggerFactory.getLogger(LeaderMiddleware.class);
     private String groupID;
-    private final List<String> followers;
+    private final HashMap<Integer, String> followers;
     private final List<Node> boardOfExecutives;
     private final Node host;
     private final BlockingQueue<Message> messageSendingBlockingQueue = new LinkedBlockingQueue<>();
@@ -30,12 +31,17 @@ public class LeaderMiddleware implements IMiddleware {
 
     public LeaderMiddleware(Node host) {
         this.host = host;
-        this.followers = new ArrayList<>(10);
+        this.followers = new HashMap<>(10);
         this.boardOfExecutives = new ArrayList<>(10);
     }
     public void setGroupID (String groupID) {
         this.groupID = groupID;
-        MessageService.messageQueuesForClusters.put(groupID, new LinkedTransferQueue<>());
+
+//        JSONObject response = new JSONObject()
+//                .put("NODE_NAME", host.getNodeName())
+//                .put("ASSIGNED_AS", MiddlewareType.LEADER)
+//                .put("GROUP_ID", groupID);
+//        host.getWebSocketServer().broadcast(response.toString());
     }
     public String getGroupID() {
         return groupID;
@@ -45,8 +51,14 @@ public class LeaderMiddleware implements IMiddleware {
         boardOfExecutives.add(leadingState);
     }
 
-    public void addFollower(String follower) {
-        followers.add(follower);
+    public void addFollower(int bullyID, String follower) {
+        followers.put(bullyID, follower);
+//        JSONObject response = new JSONObject()
+//                .put("NODE_NAME", host.getNodeName())
+//                .put("ACTING_AS", MiddlewareType.LEADER)
+//                .put("ADD_FOLLOWER", follower)
+//                .put("BULLY_ID", bullyID);
+//        host.getWebSocketServer().broadcast(response.toString());
     }
 
     @Override
@@ -75,7 +87,7 @@ public class LeaderMiddleware implements IMiddleware {
                 LOGGER.info(host.getNodeName() + " " + "Task received for Leader.");
                 break;
             case "ELECTION" :
-                LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for " + host.getNodeName());
+                LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for  leader " + host.getNodeName());
 
                 int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
                 if (electionInitiatorBullyID < host.getNodeBullyID()) {
@@ -92,12 +104,13 @@ public class LeaderMiddleware implements IMiddleware {
                 break;
             case "ADD_FOLLOWER" :
                 String newFollowerName = fields.get("FOLLOWER_NAME");
-                this.addFollower(newFollowerName);
-                for (String follower : followers) {
-                    if (!newFollowerName.equals(follower)) {
-                        Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower);
+                int followerBullyID = Integer.parseInt(fields.get("FOLLOWER_BULLY_ID"));
+                this.addFollower(followerBullyID, newFollowerName);
+                for (Map.Entry<Integer, String> follower : followers.entrySet()) {
+                    if (!newFollowerName.equals(follower.getValue())) {
+                        Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower.getValue());
                         addGroupMemberMessage.addField("GROUP_MEMBER_NAME", newFollowerName);
-                        addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID",fields.get("FOLLOWER_BULLY_ID"));
+                        addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID", String.valueOf(followerBullyID));
                         host.sendMessage(addGroupMemberMessage);
                     }
                 }
@@ -126,6 +139,10 @@ public class LeaderMiddleware implements IMiddleware {
             executorService.shutdownNow();
             processIsActive.set(false);
             LOGGER.info(host.getNodeName() + " leader process shutting down");
+            JSONObject response = new JSONObject()
+                    .put("NODE_NAME", host.getNodeName())
+                    .put("STOPPED_LEADER_PROCESS", true);
+            host.getWebSocketServer().broadcast(response.toString());
         }
     }
 
@@ -170,10 +187,16 @@ public class LeaderMiddleware implements IMiddleware {
         executorService.scheduleWithFixedDelay(() -> {
             LOGGER.info(host.getNodeName() + " leader process beacon activated");
             LOGGER.info(host.getNodeName() + " followers " + followers);
-            for (String follower : followers) {
-                Message beaconMessage = new Message(MessageType.BEACON, follower);
+            for (Map.Entry<Integer, String> follower : followers.entrySet()) {
+                Message beaconMessage = new Message(MessageType.BEACON, follower.getValue());
                 host.sendMessage(beaconMessage);
             }
         }, 0, Config.UNIT_TIME * 10, TimeUnit.MILLISECONDS);
+
+        JSONObject response = new JSONObject()
+                .put("MESSAGE_TYPE", "POST_ELECTION_LEADER")
+                .put("FOLLOWERS", followers)
+                .put("NODE_NAME", host.getNodeName());
+        this.host.getWebSocketServer().broadcast(response.toString());
     }
 }

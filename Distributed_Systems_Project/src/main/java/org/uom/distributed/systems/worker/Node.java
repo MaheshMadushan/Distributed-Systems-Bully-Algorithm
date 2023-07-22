@@ -1,5 +1,7 @@
 package org.uom.distributed.systems.worker;
 
+import org.java_websocket.server.WebSocketServer;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
@@ -26,6 +28,29 @@ public class Node implements Runnable {
     private final HashMap<String, Node> neighbours;
     private IMiddleware middleware = new IdleState(this);
 
+    public WebSocketServer getWebSocketServer() {
+        return webSocketServer;
+    }
+
+    private WebSocketServer webSocketServer;
+
+    public Node(int X, int Y, int ENERGY_LEVEL, WebSocketServer server) {
+        this.X_COORDINATE = X;
+        this.Y_COORDINATE = Y;
+        this.ENERGY_LEVEL = new AtomicInteger(ENERGY_LEVEL);
+        this.neighbours = new HashMap<>(10);
+        this.nodeName = String.format("%d_%d_%d",X,Y,ENERGY_LEVEL);
+        this.webSocketServer = server;
+        JSONObject response = new JSONObject()
+                .put("MESSAGE_TYPE", "PROVISION")
+                .put("X", X)
+                .put("Y", Y)
+                .put("STATUS", this.middleware.getMiddlewareType())
+                .put("ENERGY_LEVEL", this.ENERGY_LEVEL.get())
+                .put("NODE_NAME", this.nodeName);
+        webSocketServer.broadcast(response.toString());
+    };
+
     public Node(int X, int Y, int ENERGY_LEVEL) {
         this.X_COORDINATE = X;
         this.Y_COORDINATE = Y;
@@ -36,6 +61,11 @@ public class Node implements Runnable {
 
     public void setMiddleware(IMiddleware middleware) {
         this.middleware = middleware;
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", getNodeName())
+                .put("STATUS", middleware.getMiddlewareType())
+                .put("GROUP_ID", middleware.getGroupID());
+        webSocketServer.broadcast(response.toString());
     }
 
     public MiddlewareType getStateType() {
@@ -113,6 +143,10 @@ public class Node implements Runnable {
 
     public void setNodeBullyID(long nodeBullyID) {
         this.nodeBullyID = nodeBullyID;
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", getNodeName())
+                .put("BULLY_ID", nodeBullyID);
+        webSocketServer.broadcast(response.toString());
     }
 
     // simulates node's network interface
@@ -147,6 +181,10 @@ public class Node implements Runnable {
             try {
                 Thread.sleep(Config.UNIT_TIME);
                 ENERGY_LEVEL.decrementAndGet();
+//                JSONObject response = new JSONObject()
+//                        .put("ENERGY_LEVEL", ENERGY_LEVEL.get())
+//                        .put("NODE_NAME", this.nodeName);
+//                webSocketServer.broadcast(response.toString());
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -154,6 +192,11 @@ public class Node implements Runnable {
         this.stopRunningMiddlewareProcessGracefully();
         workerThread.interrupt();
         LOGGER.info("node " + nodeName + " " + getStateType() + " evicted");
+        JSONObject response = new JSONObject()
+                .put("MESSAGE_TYPE", "EVICTION")
+                .put("EVICTED", true)
+                .put("NODE_NAME", this.nodeName);
+        webSocketServer.broadcast(response.toString());
     }
 
     public void stopRunningMiddlewareProcessGracefully() {

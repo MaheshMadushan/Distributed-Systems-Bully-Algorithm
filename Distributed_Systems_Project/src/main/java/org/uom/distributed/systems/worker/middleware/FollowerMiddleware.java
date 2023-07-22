@@ -1,5 +1,6 @@
 package org.uom.distributed.systems.worker.middleware;
 
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Utilities.Timer;
@@ -49,6 +50,8 @@ public class FollowerMiddleware implements IMiddleware {
                                     + " assuming leader is unresponsive."
                     );
 
+                    JSONObject response = new JSONObject();
+
                     List<Map.Entry<Integer, String>> bullies = groupMembers
                             .entrySet()
                             .stream()
@@ -64,6 +67,12 @@ public class FollowerMiddleware implements IMiddleware {
                         isCandidate.set(true);
                         electionInProgress.set(true);
 
+                        response = new JSONObject()
+                                .put("MESSAGE_TYPE", "ELECTION")
+                                .put("BEACON_TIMER_EXECUTED", true)
+                                .put("NODE_NAME", host.getNodeName());
+                        host.getWebSocketServer().broadcast(response.toString());
+
                         for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
                             message = new Message(MessageType.OK, innocentIDAndNodeAddress.getValue());
                             host.sendMessage(message);
@@ -74,9 +83,11 @@ public class FollowerMiddleware implements IMiddleware {
                         }
 
                         StringBuilder followers = new StringBuilder();
-                        groupMembers.values().stream().iterator().forEachRemaining((i) -> {
-                            followers.append(i);
-                            followers.append(",");
+                        groupMembers.entrySet().stream().iterator().forEachRemaining((i) -> {
+                            followers.append(i.getKey())
+                                    .append("=")
+                                    .append(i.getValue())
+                                    .append(",");
                         });
 
                         Message assignMessage = new Message(MessageType.ASSIGN, this.host.getNodeName())
@@ -94,15 +105,44 @@ public class FollowerMiddleware implements IMiddleware {
                         break;
                     } else {
                         if(!isCandidate.get() && !electionInProgress.get()) {
+
                             LOGGER.info(host.getNodeName() + " in a election");
                             electionInProgress.set(true);
                             isCandidate.set(true);
+
+                            response = new JSONObject()
+                                    .put("MESSAGE_TYPE", "ELECTION")
+                                    .put("BEACON_TIMER_EXECUTED", true)
+                                    .put("NODE_NAME", host.getNodeName())
+                                    .put("IN_ELECTION", electionInProgress.get())
+                                    .put("IS_CANDIDATE", isCandidate.get())
+                                    .put("NO_BULLIES", false);
+                            try {
+                                Thread.sleep(1500);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                            host.getWebSocketServer().broadcast(response.toString());
+
                             // there are bully ids greater than mine and start the election
                             for (Map.Entry<Integer, String> bullyIDAndAddress : bullies) {
                                 message = new Message(MessageType.ELECTION, bullyIDAndAddress.getValue());
                                 message.addField("CANDIDATE_BULLY_ID", String.valueOf(host.getNodeBullyID()));
 
                                 host.sendMessage(message);
+
+                                response = new JSONObject()
+                                        .put("MESSAGE_TYPE", "ELECTION")
+                                        .put("NODE_NAME", host.getNodeName())
+                                        .put("IN_ELECTION", electionInProgress.get())
+                                        .put("IS_CANDIDATE", isCandidate.get())
+                                        .put("SEND_CANDIDATE_TO", bullyIDAndAddress.getValue());
+                                try {
+                                    Thread.sleep(1500);
+                                } catch (InterruptedException e) {
+                                    throw new RuntimeException(e);
+                                }
+                                host.getWebSocketServer().broadcast(response.toString());
                             }
 
                             electionDecisionCommunicationBlockinqQueue.clear(); // clear comm channel for the new thread process
@@ -124,6 +164,14 @@ public class FollowerMiddleware implements IMiddleware {
         // let 5 seconds for bully to answer via an OK or COORDINATOR
         // if not self promote to leader
         LOGGER.info("Election handling thread started for node " + host.getNodeName());
+
+        JSONObject response = new JSONObject()
+                .put("MESSAGE_TYPE", "ELECTION")
+                .put("NODE_NAME", host.getNodeName())
+                .put("IN_ELECTION", electionInProgress.get())
+                .put("IS_CANDIDATE", isCandidate.get());
+        host.getWebSocketServer().broadcast(response.toString());
+
         Message message;
         try {
             message = electionDecisionCommunicationBlockinqQueue.poll(5000, TimeUnit.MILLISECONDS);
@@ -132,12 +180,18 @@ public class FollowerMiddleware implements IMiddleware {
         }
 
         if (isCandidate.get() && electionInProgress.get() && message == null) {
+            response = new JSONObject()
+                    .put("ASSIGNED_AS_LEADER", true)
+                    .put("TIMEOUT", true);
+
             LOGGER.info("Elected this node " + host.getNodeName() + " since still no OK or COORDINATOR message received");
 
             StringBuilder followers = new StringBuilder();
-            groupMembers.values().stream().iterator().forEachRemaining((i) -> {
-                followers.append(i);
-                followers.append(",");
+            groupMembers.entrySet().stream().iterator().forEachRemaining((i) -> {
+                followers.append(i.getKey())
+                        .append("=")
+                        .append(i.getValue())
+                        .append(",");
             });
 
             Message assignMessage = new Message(MessageType.ASSIGN, this.host.getNodeName())
@@ -153,23 +207,49 @@ public class FollowerMiddleware implements IMiddleware {
             }
         } else {
             if (message != null) {
+                response = new JSONObject()
+                        .put("ASSIGNED_AS_LEADER", false)
+                        .put("TIMEOUT", false);
+
                 LOGGER.info(host.getNodeName() + " " + message + (isCandidate.get() ? " and still a candidate" : "") + (electionInProgress.get() ? " and still election is going on." : ""));
                 LOGGER.info("Not Elected this node " + host.getNodeName() + " since " + message.getFields().get("MESSAGE_TYPE") + " received");
             } else {
+                response = new JSONObject()
+                        .put("ASSIGNED_AS_LEADER", false)
+                        .put("TIMEOUT", true);
+
                 LOGGER.info(host.getNodeName() + " <- Not Elected this node since timeout and election is over or/and this node not a candidate ");
             }
         }
         electionInProgress.set(false);
         isCandidate.set(false);
+
+//        response
+//                .put("MESSAGE_TYPE", "ELECTION")
+//                .put("NODE_NAME", host.getNodeName())
+//                .put("IN_ELECTION", false)
+//                .put("IS_CANDIDATE", false);
+//        host.getWebSocketServer().broadcast(response.toString());
         LOGGER.info("Exiting election handling thread of node " + host.getNodeName());
     }
 
     public void setLeader(String leader) {
         this.leader = leader;
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", host.getNodeName())
+                .put("SET_LEADER", true)
+                .put("LEADER", leader)
+                .put("GROUP_ID", groupID);
+        host.getWebSocketServer().broadcast(response.toString());
     }
 
     public void setGroupID (String groupID) {
         this.groupID = groupID;
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", host.getNodeName())
+                .put("ACTING_AS", MiddlewareType.FOLLOWER)
+                .put("GROUP_ID", groupID);
+        host.getWebSocketServer().broadcast(response.toString());
     }
 
     public String getGroupID() {
@@ -178,6 +258,12 @@ public class FollowerMiddleware implements IMiddleware {
 
     public void addGroupMembers (int bullyId, String groupMember) {
         groupMembers.put(bullyId, groupMember);
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", host.getNodeName())
+                .put("ACTING_AS", MiddlewareType.FOLLOWER)
+                .put("ADD_GROUP_MEMBER", groupMember)
+                .put("BULLY_ID", bullyId);
+        host.getWebSocketServer().broadcast(response.toString());
     }
 
     @Override
@@ -192,6 +278,12 @@ public class FollowerMiddleware implements IMiddleware {
             timerThread.interrupt();
         };
         processIsActive.set(false);
+
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", host.getNodeName())
+                .put("STOPPED_FOLLOWER_PROCESS", true);
+        host.getWebSocketServer().broadcast(response.toString());
+
         LOGGER.info(host.getNodeName() + " follower process shutting down");
     }
 
@@ -228,6 +320,11 @@ public class FollowerMiddleware implements IMiddleware {
         messageReceivingThread.start();
         messageSendingThread.start();
         timerThread.start();
+
+        JSONObject response = new JSONObject()
+                .put("NODE_NAME", host.getNodeName())
+                .put("STARTED_FOLLOWER_PROCESS", true);
+        host.getWebSocketServer().broadcast(response.toString());
     }
 
     @Override
@@ -242,7 +339,9 @@ public class FollowerMiddleware implements IMiddleware {
                     if(fields.containsKey("FOLLOWERS")) {
                         String[] followers = fields.get("FOLLOWERS").split(",");
                         for (String follower : followers) {
-                            leaderMiddleware.addFollower(follower);
+                            int bullyID = Integer.parseInt(follower.split("=")[0]);
+                            String name = follower.split("=")[1];
+                            leaderMiddleware.addFollower(bullyID, name);
                         }
                     }
                     host.stopRunningMiddlewareProcessGracefully();
@@ -259,12 +358,29 @@ public class FollowerMiddleware implements IMiddleware {
 
                     LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for " + host.getNodeName());
 
+                    JSONObject response = new JSONObject()
+                            .put("MESSAGE_TYPE", "ELECTION")
+                            .put("NODE_NAME", host.getNodeName())
+                            .put("ELECTION_RECEIVED", true)
+                            .put("ELECTION_SENDER", fields.get("SENDER"));
+                    Thread.sleep(1500);
+                    host.getWebSocketServer().broadcast(response.toString());
+
                     int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
                     if (electionInitiatorBullyID < host.getNodeBullyID()) {
                         message = new Message(MessageType.OK, fields.get("SENDER"));
                         host.sendMessage(message);
 
                         if (!electionInProgress.get() && !isCandidate.get() && processIsActive.get()) {
+
+                            response = new JSONObject()
+                                    .put("MESSAGE_TYPE", "ELECTION")
+                                    .put("NODE_NAME", host.getNodeName())
+                                    .put("IN_ELECTION", true)
+                                    .put("IS_CANDIDATE", true);
+                            host.getWebSocketServer().broadcast(response.toString());
+                            Thread.sleep(1500);
+
                             isCandidate.set(true);
                             electionInProgress.set(true);
 
@@ -309,6 +425,13 @@ public class FollowerMiddleware implements IMiddleware {
                     isCandidate.set(false);
                     timer.reset();
 
+                    JSONObject response = new JSONObject()
+                            .put("MESSAGE_TYPE", "OK")
+                            .put("IN_ELECTION", electionInProgress.get())
+                            .put("NODE_NAME", host.getNodeName());
+                    host.getWebSocketServer().broadcast(response.toString());
+                    Thread.sleep(1500);
+
                     LOGGER.info(host.getNodeName() + " follower received OK for from " + fields.get("SENDER"));
                     break;
                 }
@@ -322,6 +445,13 @@ public class FollowerMiddleware implements IMiddleware {
 
                     timer.reset();
                     electionInProgress.set(false);
+
+                    JSONObject response = new JSONObject()
+                            .put("MESSAGE_TYPE", "COORDINATOR")
+                            .put("NODE_NAME", host.getNodeName());
+                    host.getWebSocketServer().broadcast(response.toString());
+
+                    Thread.sleep(1500);
 
                     LOGGER.info(host.getNodeName() + " exited from the election since COORDINATOR received");
                     if (host.getNodeName().equals(message.getRecipientOrGroupID())) {
@@ -377,6 +507,12 @@ public class FollowerMiddleware implements IMiddleware {
                     }
                     electionInProgress.set(false);
                     timer.reset();
+                    JSONObject response = new JSONObject()
+                            .put("MESSAGE_TYPE", "BEACON")
+                            .put("NODE_NAME", host.getNodeName())
+                            .put("ACTING_AS", MiddlewareType.FOLLOWER)
+                            .put("BEACON_SENT_TO", this.host.getNodeName());
+                    host.getWebSocketServer().broadcast(response.toString());
                     LOGGER.info("Follower " + host.getNodeName() + " : Beacon received from the leader : " + leader);
                     break;
                 }

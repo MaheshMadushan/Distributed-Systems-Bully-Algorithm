@@ -16,4 +16,6 @@ public interface IMiddleware {
     void stopProcess();
 
     void startProcess();
+
+    String getGroupID();
 }

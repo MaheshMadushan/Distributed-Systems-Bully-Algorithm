@@ -1,5 +1,6 @@
 package org.uom.distributed.systems;
 
+import org.java_websocket.server.WebSocketServer;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.messaging.MessageType;
@@ -7,6 +8,7 @@ import org.uom.distributed.systems.registry.Registry;
 import org.uom.distributed.systems.worker.Node;
 import org.uom.distributed.systems.worker.middleware.MiddlewareType;
 
+import java.net.InetSocketAddress;
 import java.util.*;
 
 public class NodeManager {
@@ -18,6 +20,11 @@ public class NodeManager {
     private static final Map<Double, Node> LEADER_ELIGIBILITY_MAP = new TreeMap<>(Collections.reverseOrder());
     private static final List<Node> leaders = new ArrayList<>();
     private static final MessageService MESSAGE_SERVICE = new MessageService();
+    private static WebSocketServer server = null;
+
+    public NodeManager(WebSocketServer server) {
+        this.server = server;
+    }
 
     public static void initiateSystem(int[][] inputs) throws InterruptedException {
         addNodesToList(inputs);
@@ -49,7 +56,7 @@ public class NodeManager {
     private static void addNodesToList(int[][] inputs) {
         for (int[] ints : inputs) {
             System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints[X], ints[Y], ints[ENERGY_LEVEL]);
-            NODE_LIST.add(new Node(ints[X], ints[Y], ints[ENERGY_LEVEL]));
+            NODE_LIST.add(new Node(ints[X], ints[Y], ints[ENERGY_LEVEL],server));
         }
     }
 
@@ -121,6 +128,7 @@ public class NodeManager {
                 message.addField("TYPE", MiddlewareType.LEADER.toString());
                 message.addField("GROUP_ID", groupID);
                 MESSAGE_SERVICE.sendMessage(message);
+                leaders.add(node);
 
                 // set that node's neighbours as followers - forming the group
                 for (Map.Entry<String, Node> entry : node.getNeighbours().entrySet()) {
@@ -142,6 +150,17 @@ public class NodeManager {
             }
             // continue - if there is left-out nodes then get node with the highest ratio make it as another leader (form new group around that)
         }
+
+        Thread thread = new Thread(() -> {
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            leaders.get(0).kill();
+
+        });
+        thread.start();
     }
 
 }
