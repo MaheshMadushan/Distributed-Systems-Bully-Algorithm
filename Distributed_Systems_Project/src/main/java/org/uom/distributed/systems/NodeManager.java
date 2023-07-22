@@ -19,7 +19,7 @@ public class NodeManager {
     private static final List<Node> leaders = new ArrayList<>();
     private static final MessageService MESSAGE_SERVICE = new MessageService();
 
-    public static void initiateSystem(int[][] inputs) throws InterruptedException {
+    public static void initiateSystem(int[][] inputs) {
         addNodesToList(inputs);
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
@@ -27,7 +27,7 @@ public class NodeManager {
         leaderElection();
     }
 
-    public static void initiateSystem(Node[] inputs) throws InterruptedException {
+    public static void initiateSystem(Node[] inputs) {
         NODE_LIST = Arrays.asList(inputs);
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
@@ -77,11 +77,11 @@ public class NodeManager {
         }
     }
 
-    private static void leaderElection() throws InterruptedException {
+    private static void leaderElection() {
         createClusters();
     }
 
-    private static void createClusters() throws InterruptedException {
+    private static void createClusters() {
         int conflictResoluter = 0;
         for (Node node : NODE_LIST) {
 
@@ -108,34 +108,34 @@ public class NodeManager {
         for (Double key : LEADER_ELIGIBILITY_MAP.keySet()) {
 
             // LEADER_ELIGIBILITY_MAP - sorted treemap according to "the ratio"
-            Node node = LEADER_ELIGIBILITY_MAP.get(key);
+            Node possibleLeaderNode = LEADER_ELIGIBILITY_MAP.get(key);
 
             // skip followers that already in a group or already a leader of a group from leader election
-            if (node.getStateType().equals(MiddlewareType.IDLE)){
-
+            if (possibleLeaderNode.getStateType().equals(MiddlewareType.IDLE)){
+                Node leaderNode = possibleLeaderNode;
                 // set node with the highest ratio as the leader - means first element is always a leader
                 // This is a leader - form a new cluster around this leader
                 String groupID = UUID.randomUUID().toString();
 
-                Message message = new Message(MessageType.ASSIGN, node.getNodeName());
+                Message message = new Message(MessageType.ASSIGN, leaderNode.getNodeName());
                 message.addField("TYPE", MiddlewareType.LEADER.toString());
                 message.addField("GROUP_ID", groupID);
                 MESSAGE_SERVICE.sendMessage(message);
 
                 // set that node's neighbours as followers - forming the group
-                for (Map.Entry<String, Node> entry : node.getNeighbours().entrySet()) {
-                    Node neighbour = entry.getValue();
+                for (Map.Entry<String, Node> entry : leaderNode.getNeighbours().entrySet()) {
+                    Node leaderNodeNeighbour = entry.getValue();
 
-                    if (neighbour.getStateType().equals(MiddlewareType.IDLE)) {
-                        message = new Message(MessageType.ASSIGN, neighbour.getNodeName());
+                    if (leaderNodeNeighbour.getStateType().equals(MiddlewareType.IDLE)) {
+                        message = new Message(MessageType.ASSIGN, leaderNodeNeighbour.getNodeName());
                         message.addField("TYPE", MiddlewareType.FOLLOWER.toString());
-                        message.addField("LEADER", node.getNodeName());
+                        message.addField("LEADER", leaderNode.getNodeName());
                         message.addField("GROUP_ID", groupID);
                         MESSAGE_SERVICE.sendMessage(message);
 
-                        message = new Message(MessageType.ADD_FOLLOWER, node.getNodeName());
-                        message.addField("FOLLOWER_NAME", neighbour.getNodeName());
-                        message.addField("FOLLOWER_BULLY_ID", String.valueOf(neighbour.getNodeBullyID()));
+                        message = new Message(MessageType.ADD_FOLLOWER, leaderNode.getNodeName());
+                        message.addField("FOLLOWER_NAME", leaderNodeNeighbour.getNodeName());
+                        message.addField("FOLLOWER_BULLY_ID", String.valueOf(leaderNodeNeighbour.getNodeBullyID()));
                         MESSAGE_SERVICE.sendMessage(message);
                     }
                 }

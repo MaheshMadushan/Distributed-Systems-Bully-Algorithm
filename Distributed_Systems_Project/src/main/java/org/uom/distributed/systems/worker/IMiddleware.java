@@ -11,8 +11,8 @@ public interface IMiddleware {
 
     void handle(Message message) throws InterruptedException;
 
-    void receiveMessage(Message message);
-    void sendMessage(String recipientAddress, Message message);
+    Message receiveMessage(Message message);
+    Message sendMessage(String recipientAddress, Message message);
     void stopProcess();
 
     void startProcess();

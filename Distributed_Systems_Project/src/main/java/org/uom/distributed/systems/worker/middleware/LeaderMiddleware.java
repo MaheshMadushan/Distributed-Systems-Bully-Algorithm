@@ -20,17 +20,14 @@ import java.util.stream.Collectors;
 public class LeaderMiddleware implements IMiddleware {
     public static Logger LOGGER = LoggerFactory.getLogger(LeaderMiddleware.class);
     private String groupID;
-    private final List<String> followers;
+    private final Map<Integer, String> followers;
     private final List<Node> boardOfExecutives;
     private final Node host;
-    private final BlockingQueue<Message> messageSendingBlockingQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<Message> messageReceivingBlockingQueue = new LinkedBlockingQueue<>();
-    private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(1);
     private final AtomicBoolean processIsActive = new AtomicBoolean(false);
 
     public LeaderMiddleware(Node host) {
         this.host = host;
-        this.followers = new ArrayList<>(10);
+        this.followers = new HashMap<>(10);
         this.boardOfExecutives = new ArrayList<>(10);
     }
     public void setGroupID (String groupID) {
@@ -45,8 +42,8 @@ public class LeaderMiddleware implements IMiddleware {
         boardOfExecutives.add(leadingState);
     }
 
-    public void addFollower(String follower) {
-        followers.add(follower);
+    public void addFollower(int bullyID, String follower) {
+        followers.add(bullyID, follower);
     }
 
     @Override
@@ -55,8 +52,9 @@ public class LeaderMiddleware implements IMiddleware {
     }
 
     @Override
-    public void handle(Message message) {
+    public Message handle(Message message) {
         HashMap<String, String> fields = message.getFields();
+        Message reply;
         switch (message.getType().name()) {
             case "ASSIGN" :
                 if(fields.get("TYPE").equals("FOLLOWER")) {
@@ -66,22 +64,13 @@ public class LeaderMiddleware implements IMiddleware {
                     followerMiddleware.setLeader(fields.get("LEADER"));
                     host.setMiddleware(followerMiddleware);
                     LOGGER.info(host.getNodeName() + " " + "Assigned as Follower.");
+                    reply = new Message(MessageType.SUCCESS, fields.get("SENDER"));
                 }
                 else {
                     LOGGER.info("message is discarded");
                 }
                 break;
-            case "TASK" :
-                LOGGER.info(host.getNodeName() + " " + "Task received for Leader.");
-                break;
             case "ELECTION" :
-                LOGGER.info("from " + fields.get("SENDER") + " ELECTION message received for " + host.getNodeName());
-
-                int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
-                if (electionInitiatorBullyID < host.getNodeBullyID()) {
-                    message = new Message(MessageType.COORDINATOR, fields.get("SENDER"));
-                    host.sendMessage(message);
-                }
                 LOGGER.info("Leader " + host.getNodeName() + " received Election message.");
                 break;
             case "OK" :
@@ -92,12 +81,13 @@ public class LeaderMiddleware implements IMiddleware {
                 break;
             case "ADD_FOLLOWER" :
                 String newFollowerName = fields.get("FOLLOWER_NAME");
-                this.addFollower(newFollowerName);
-                for (String follower : followers) {
-                    if (!newFollowerName.equals(follower)) {
-                        Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower);
+                int bullyIDOfFollower = Integer.parseInt(fields.get("FOLLOWER_BULLY_ID"));
+                this.addFollower(bullyIDOfFollower, newFollowerName);
+                for (Map.Entry<Integer, String> follower : followers.entrySet()) {
+                    if (!newFollowerName.equals(follower.getValue())) {
+                        Message addGroupMemberMessage = new Message(MessageType.ADD_GROUP_MEMBER, follower.getValue());
                         addGroupMemberMessage.addField("GROUP_MEMBER_NAME", newFollowerName);
-                        addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID",fields.get("FOLLOWER_BULLY_ID"));
+                        addGroupMemberMessage.addField("GROUP_MEMBER_BULLY_ID",String.valueOf(bullyIDOfFollower));
                         host.sendMessage(addGroupMemberMessage);
                     }
                 }
@@ -106,24 +96,24 @@ public class LeaderMiddleware implements IMiddleware {
             default :
                 fields.forEach((s, s2) -> LOGGER.info(s+":"+s2));
         }
+        return reply;
     }
 
     @Override
-    public void receiveMessage(Message message) {
-        if(processIsActive.get()) messageReceivingBlockingQueue.add(message);
+    public Message receiveMessage(Message message) {
+        if(processIsActive.get()) return handle(message);
+        return null;
     }
 
     @Override
-    public void sendMessage(String recipientAddress, Message message) {
-        if(processIsActive.get()) messageSendingBlockingQueue.add(message);
+    public Message sendMessage(String recipientAddress, Message message) {
+        if(processIsActive.get()) host.sendMessage(message);
+        return null;
     }
 
     @Override
     public synchronized void stopProcess() {
         if (processIsActive.get()) {
-            messageReceivingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
-            messageSendingBlockingQueue.add(new Message(MessageType.INTERRUPT, null));
-            executorService.shutdownNow();
             processIsActive.set(false);
             LOGGER.info(host.getNodeName() + " leader process shutting down");
         }
@@ -137,43 +127,5 @@ public class LeaderMiddleware implements IMiddleware {
         else
             return;
 
-        Thread messageReceivingThread = new Thread(() -> {
-            try {
-                while (true) {
-                    Message message = messageReceivingBlockingQueue.take();
-                    if (message.getType().equals(MessageType.INTERRUPT)) {
-                        break;
-                    }
-                    this.handle(message);
-                }
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }, this.host.getNodeName() + "-Leader-messageReceivingThread");
-        Thread messageSendingThread = new Thread(() -> {
-            try {
-                while (true) {
-                    Message message = messageSendingBlockingQueue.take();
-                    if (message.getType().equals(MessageType.INTERRUPT)) {
-                        break;
-                    }
-                    host.sendMessage(message);
-                }
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }, this.host.getNodeName() + "-Leader-messageSendingThread");
-
-        messageReceivingThread.start();
-        messageSendingThread.start();
-
-        executorService.scheduleWithFixedDelay(() -> {
-            LOGGER.info(host.getNodeName() + " leader process beacon activated");
-            LOGGER.info(host.getNodeName() + " followers " + followers);
-            for (String follower : followers) {
-                Message beaconMessage = new Message(MessageType.BEACON, follower);
-                host.sendMessage(beaconMessage);
-            }
-        }, 0, Config.UNIT_TIME * 10, TimeUnit.MILLISECONDS);
     }
 }
