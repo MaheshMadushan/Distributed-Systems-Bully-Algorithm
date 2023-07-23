@@ -104,14 +104,19 @@
           if(value.source.id === prevLeader.id) {
             value.source = newSourceNodeFroGroup;
           }
-          if(value.target.id === message.NODE_NAME) {
+          if (value.target.id === prevLeader.id) {
+            value.target = newSourceNodeFroGroup;
+          }
+          if(value.target.id === message.NODE_NAME && value.source.id === message.NODE_NAME) {
             value.target = prevLeader;
           }
         })
-        for (let index = 0; index < cpLinks.length; index++) {
-          links.pop()
-          links.push(cpLinks[index])
-        }
+        links = [...cpLinks]
+        console.log(links)
+        // for (let index = 0; index < links.length; index++) {
+        //   links.pop()
+        //   links.push(cpLinks[index])
+        // }
         updateSimulation()
   
       }
