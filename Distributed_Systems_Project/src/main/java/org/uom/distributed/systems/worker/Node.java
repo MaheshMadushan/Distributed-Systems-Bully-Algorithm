@@ -1,12 +1,12 @@
 package org.uom.distributed.systems.worker;
 
-import org.java_websocket.server.WebSocketServer;
+import org.java_websocket.WebSocket;
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
+import org.uom.distributed.systems.LogInterceptor;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
+import org.uom.distributed.systems.worker.middleware.FollowerMiddleware;
 import org.uom.distributed.systems.worker.middleware.IdleState;
 import org.uom.distributed.systems.worker.middleware.MiddlewareType;
 
@@ -17,7 +17,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Node implements Runnable {
-    private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
+    private final LogInterceptor LOGGER ;;
     private long nodeBullyID;
     private String nodeName;
     private int X_COORDINATE;
@@ -26,21 +26,29 @@ public class Node implements Runnable {
     private final BlockingQueue<Message> taskQueue = new ArrayBlockingQueue<>(10);
     private final MessageService messageService = new MessageService();
     private final HashMap<String, Node> neighbours;
-    private IMiddleware middleware = new IdleState(this);
+    private IMiddleware middleware;
 
-    public WebSocketServer getWebSocketServer() {
-        return webSocketServer;
+    public WebSocket getWSCommonConnection() {
+        return common_con;
     }
 
-    private WebSocketServer webSocketServer;
+    public WebSocket getWSLogConnection() {
+        return common_con;
+    }
+    private Thread workerThread;
+    private WebSocket common_con;
+    private WebSocket log_con;
 
-    public Node(int X, int Y, int ENERGY_LEVEL, WebSocketServer server) {
+    public Node(int X, int Y, int ENERGY_LEVEL, WebSocket common_con, WebSocket log_con) {
         this.X_COORDINATE = X;
         this.Y_COORDINATE = Y;
         this.ENERGY_LEVEL = new AtomicInteger(ENERGY_LEVEL);
         this.neighbours = new HashMap<>(10);
         this.nodeName = String.format("%d_%d_%d",X,Y,ENERGY_LEVEL);
-        this.webSocketServer = server;
+        this.common_con = common_con;
+        this.log_con = log_con;
+        this.LOGGER = new LogInterceptor(FollowerMiddleware.class, this.getWSLogConnection());
+        this.middleware = new IdleState(this);
         JSONObject response = new JSONObject()
                 .put("MESSAGE_TYPE", "PROVISION")
                 .put("X", X)
@@ -48,7 +56,7 @@ public class Node implements Runnable {
                 .put("STATUS", this.middleware.getMiddlewareType())
                 .put("ENERGY_LEVEL", this.ENERGY_LEVEL.get())
                 .put("NODE_NAME", this.nodeName);
-        webSocketServer.broadcast(response.toString());
+        this.common_con.send(response.toString());
     };
 
     public Node(int X, int Y, int ENERGY_LEVEL) {
@@ -57,6 +65,7 @@ public class Node implements Runnable {
         this.ENERGY_LEVEL = new AtomicInteger(ENERGY_LEVEL);
         this.neighbours = new HashMap<>(10);
         this.nodeName = String.format("%d_%d_%d",X,Y,ENERGY_LEVEL);
+        this.LOGGER = new LogInterceptor(FollowerMiddleware.class, this.getWSCommonConnection());
     };
 
     public void setMiddleware(IMiddleware middleware) {
@@ -65,7 +74,7 @@ public class Node implements Runnable {
                 .put("NODE_NAME", getNodeName())
                 .put("STATUS", middleware.getMiddlewareType())
                 .put("GROUP_ID", middleware.getGroupID());
-        webSocketServer.broadcast(response.toString());
+        common_con.send(response.toString());
     }
 
     public MiddlewareType getStateType() {
@@ -146,7 +155,7 @@ public class Node implements Runnable {
         JSONObject response = new JSONObject()
                 .put("NODE_NAME", getNodeName())
                 .put("BULLY_ID", nodeBullyID);
-        webSocketServer.broadcast(response.toString());
+        common_con.send(response.toString());
     }
 
     // simulates node's network interface
@@ -164,7 +173,7 @@ public class Node implements Runnable {
 
     @Override
     public void run() {
-        Thread workerThread = new Thread(() -> {
+        workerThread = new Thread(() -> {
             try {
                 while (true) {
                     taskQueue.take();
@@ -184,7 +193,7 @@ public class Node implements Runnable {
 //                JSONObject response = new JSONObject()
 //                        .put("ENERGY_LEVEL", ENERGY_LEVEL.get())
 //                        .put("NODE_NAME", this.nodeName);
-//                webSocketServer.broadcast(response.toString());
+//                webSocketServer.send;(response.toString());
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
@@ -196,7 +205,7 @@ public class Node implements Runnable {
                 .put("MESSAGE_TYPE", "EVICTION")
                 .put("EVICTED", true)
                 .put("NODE_NAME", this.nodeName);
-        webSocketServer.broadcast(response.toString());
+        common_con.send(response.toString());
     }
 
     public void stopRunningMiddlewareProcessGracefully() {
@@ -208,6 +217,9 @@ public class Node implements Runnable {
     }
 
     public void kill() {
+        System.out.println("Killing");
         this.setEnergyLevel(0);
+        this.stopRunningMiddlewareProcessGracefully();
+        workerThread.interrupt();
     }
 }

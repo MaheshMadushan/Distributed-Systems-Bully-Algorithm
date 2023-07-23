@@ -5,16 +5,16 @@ import org.uom.distributed.systems.NodeManager;
 class NodeTest {
     @org.junit.jupiter.api.Test
     void onMessageTest() throws InterruptedException {
-        Node[] nodes = {
-                new Node(4,1,4000),
-                new Node(4,2,4000),
-                new Node(4,3,4000),
-                new Node(3,4,4000),
-                new Node(2,4,4000),
-                new Node(1,4,4000)
-        };
-
-        NodeManager.initiateSystem(nodes);
+//        Node[] nodes = {
+//                new Node(4,1,4000),
+//                new Node(4,2,4000),
+//                new Node(4,3,4000),
+//                new Node(3,4,4000),
+//                new Node(2,4,4000),
+//                new Node(1,4,4000)
+//        };
+//
+//        NodeManager.initiateSystem(nodes);
 
 
 //        Thread thread = new Thread(node);
@@ -39,14 +39,14 @@ class NodeTest {
 
 
 
-
-        Thread.sleep(1000);
-        nodes[5].kill();
-        Thread.sleep(16000);
-//        nodes[4].kill();
-//        Thread.sleep(19000);
-//        nodes[3].kill();
-        Thread.sleep(Integer.MAX_VALUE);
+//
+//        Thread.sleep(1000);
+//        nodes[5].kill();
+//        Thread.sleep(16000);
+////        nodes[4].kill();
+////        Thread.sleep(19000);
+////        nodes[3].kill();
+//        Thread.sleep(Integer.MAX_VALUE);
 
     }
 }

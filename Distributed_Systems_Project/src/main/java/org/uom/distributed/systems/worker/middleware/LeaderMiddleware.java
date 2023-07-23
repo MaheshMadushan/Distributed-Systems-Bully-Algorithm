@@ -1,11 +1,9 @@
 package org.uom.distributed.systems.worker.middleware;
 
 import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.uom.distributed.systems.Config;
+import org.uom.distributed.systems.LogInterceptor;
 import org.uom.distributed.systems.messaging.Message;
-import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.messaging.MessageType;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
@@ -16,10 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class LeaderMiddleware implements IMiddleware {
-    public static Logger LOGGER = LoggerFactory.getLogger(LeaderMiddleware.class);
+    private final LogInterceptor LOGGER ;
     private String groupID;
     private final HashMap<Integer, String> followers;
     private final List<Node> boardOfExecutives;
@@ -33,6 +30,7 @@ public class LeaderMiddleware implements IMiddleware {
         this.host = host;
         this.followers = new HashMap<>(10);
         this.boardOfExecutives = new ArrayList<>(10);
+        this.LOGGER = new LogInterceptor(LeaderMiddleware.class, host.getWSLogConnection());
     }
     public void setGroupID (String groupID) {
         this.groupID = groupID;
@@ -41,7 +39,7 @@ public class LeaderMiddleware implements IMiddleware {
 //                .put("NODE_NAME", host.getNodeName())
 //                .put("ASSIGNED_AS", MiddlewareType.LEADER)
 //                .put("GROUP_ID", groupID);
-//        host.getWebSocketServer().broadcast(response.toString());
+//        host.getWebSocketServer().send();(response.toString());
     }
     public String getGroupID() {
         return groupID;
@@ -58,7 +56,7 @@ public class LeaderMiddleware implements IMiddleware {
 //                .put("ACTING_AS", MiddlewareType.LEADER)
 //                .put("ADD_FOLLOWER", follower)
 //                .put("BULLY_ID", bullyID);
-//        host.getWebSocketServer().broadcast(response.toString());
+//        host.getWebSocketServer().send();(response.toString());
     }
 
     @Override
@@ -142,7 +140,7 @@ public class LeaderMiddleware implements IMiddleware {
             JSONObject response = new JSONObject()
                     .put("NODE_NAME", host.getNodeName())
                     .put("STOPPED_LEADER_PROCESS", true);
-            host.getWebSocketServer().broadcast(response.toString());
+            host.getWSCommonConnection().send(response.toString());
         }
     }
 
@@ -197,6 +195,6 @@ public class LeaderMiddleware implements IMiddleware {
                 .put("MESSAGE_TYPE", "POST_ELECTION_LEADER")
                 .put("FOLLOWERS", followers)
                 .put("NODE_NAME", host.getNodeName());
-        this.host.getWebSocketServer().broadcast(response.toString());
+        this.host.getWSCommonConnection().send(response.toString());
     }
 }

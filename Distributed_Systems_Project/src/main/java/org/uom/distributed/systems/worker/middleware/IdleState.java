@@ -1,6 +1,7 @@
 package org.uom.distributed.systems.worker.middleware;
 
 import org.json.JSONObject;
+import org.uom.distributed.systems.LogInterceptor;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.worker.IMiddleware;
 import org.uom.distributed.systems.worker.Node;
@@ -9,9 +10,11 @@ import java.util.HashMap;
 
 public class IdleState implements IMiddleware {
     private Node host;
+    private final LogInterceptor LOGGER ;
 
     public IdleState(Node host) {
         this.host = host;
+        this.LOGGER = new LogInterceptor(FollowerMiddleware.class, host.getWSLogConnection());
     }
     @Override
     public MiddlewareType getMiddlewareType() {
@@ -32,8 +35,8 @@ public class IdleState implements IMiddleware {
                         .put("ASSIGNED_AS", "LEADER")
                         .put("NODE_NAME", host.getNodeName())
                         .put("GROUP_ID", fields.get("GROUP_ID"));
-                this.host.getWebSocketServer().broadcast(response.toString());
-                System.out.println(host.getNodeName() + " with bully id " + host.getNodeBullyID() + " " + "Assigned as Leader.");
+                this.host.getWSCommonConnection().send(response.toString());
+                LOGGER.info(host.getNodeName() + " with bully id " + host.getNodeBullyID() + " " + "Assigned as Leader.");
             } else if (fields.get("TYPE").equals("FOLLOWER")) {
                 FollowerMiddleware followerMiddleware = new FollowerMiddleware(host);
                 followerMiddleware.setGroupID(fields.get("GROUP_ID"));
@@ -46,8 +49,8 @@ public class IdleState implements IMiddleware {
                         .put("LEADER", fields.get("LEADER"))
                         .put("NODE_NAME", host.getNodeName())
                         .put("GROUP_ID", fields.get("GROUP_ID"));
-                this.host.getWebSocketServer().broadcast(response.toString());
-                System.out.println(host.getNodeName() + " with bully id " + host.getNodeBullyID() + "Assigned as Follower of leader" + " " + fields.get("LEADER"));
+                this.host.getWSCommonConnection().send(response.toString());
+                LOGGER.info(host.getNodeName() + " with bully id " + host.getNodeBullyID() + "Assigned as Follower of leader" + " " + fields.get("LEADER"));
             }
         }
     }

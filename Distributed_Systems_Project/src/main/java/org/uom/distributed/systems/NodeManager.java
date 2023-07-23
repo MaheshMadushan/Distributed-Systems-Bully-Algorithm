@@ -1,6 +1,6 @@
 package org.uom.distributed.systems;
 
-import org.java_websocket.server.WebSocketServer;
+import org.java_websocket.WebSocket;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.messaging.MessageType;
@@ -8,25 +8,24 @@ import org.uom.distributed.systems.registry.Registry;
 import org.uom.distributed.systems.worker.Node;
 import org.uom.distributed.systems.worker.middleware.MiddlewareType;
 
-import java.net.InetSocketAddress;
 import java.util.*;
 
 public class NodeManager {
-    private static final short X = 0;
-    private static final short Y = 1;
-    private static final short ENERGY_LEVEL = 2;
-    private static final double RADIUS = 20.0;
-    private static List<Node> NODE_LIST = new ArrayList<>(10);
-    private static final Map<Double, Node> LEADER_ELIGIBILITY_MAP = new TreeMap<>(Collections.reverseOrder());
-    private static final List<Node> leaders = new ArrayList<>();
-    private static final MessageService MESSAGE_SERVICE = new MessageService();
-    private static WebSocketServer server = null;
+    private final double RADIUS = 20.0;
+    private List<Node> NODE_LIST = new ArrayList<>(10);
+    private final Map<Double, Node> LEADER_ELIGIBILITY_MAP = new TreeMap<>(Collections.reverseOrder());
+    private final List<Node> leaders = new ArrayList<>();
+    private final List<Thread> runningNodes = new ArrayList<>();
+    private final MessageService MESSAGE_SERVICE = new MessageService();
+    private WebSocket common_conn = null;
+    private WebSocket log_conn = null;
 
-    public NodeManager(WebSocketServer server) {
-        this.server = server;
+    public NodeManager(WebSocket common_conn, WebSocket log_conn) {
+        this.common_conn = common_conn;
+        this.log_conn = log_conn;
     }
 
-    public static void initiateSystem(int[][] inputs) throws InterruptedException {
+    public void initiateSystem(int[][] inputs) throws InterruptedException {
         addNodesToList(inputs);
         registerNodesInRegistry();
         determineEligibleNeighboursForNodes();
@@ -34,39 +33,37 @@ public class NodeManager {
         leaderElection();
     }
 
-    public static void initiateSystem(Node[] inputs) throws InterruptedException {
-        NODE_LIST = Arrays.asList(inputs);
-        registerNodesInRegistry();
-        determineEligibleNeighboursForNodes();
-        startNodes();
-        leaderElection();
-    }
-
-    private static void startNodes() {
+    private void startNodes() {
         for (Node node : NODE_LIST) {
-            new Thread(node).start();
+            Thread nodeThread = new Thread(node);
+            nodeThread.start();
+            runningNodes.add(nodeThread);
         }
     }
 
-    private static double calculatedEuclideanDistance (Node node1, Node node2) {
+
+    private double calculatedEuclideanDistance (Node node1, Node node2) {
         double euclideanDistanceSquared = Math.pow(node1.getX() - node2.getX(), 2) + Math.pow(node1.getY() - node2.getY(), 2);
         return Math.pow(euclideanDistanceSquared, 0.5);
     }
 
-    private static void addNodesToList(int[][] inputs) {
+    private void addNodesToList(int[][] inputs) {
         for (int[] ints : inputs) {
-            System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints[X], ints[Y], ints[ENERGY_LEVEL]);
-            NODE_LIST.add(new Node(ints[X], ints[Y], ints[ENERGY_LEVEL],server));
+            short ENERGY_LEVEL = 2;
+            short y = 1;
+            short x = 0;
+            System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints[x], ints[y], ints[ENERGY_LEVEL]);
+            NODE_LIST.add(new Node(ints[x], ints[y], ints[ENERGY_LEVEL], common_conn, log_conn));
         }
     }
 
-    private static void registerNodesInRegistry() {
+    private void registerNodesInRegistry() {
         for (Node node : NODE_LIST) {
             Registry.registerNode(node);
         }
     }
 
-    private static void determineEligibleNeighboursForNodes() {
+    private void determineEligibleNeighboursForNodes() {
         for (int i = 0; i < NODE_LIST.size(); i++) {
             Node node_a = NODE_LIST.get(i);
             for (int j = i; j < NODE_LIST.size(); j++) {
@@ -84,11 +81,11 @@ public class NodeManager {
         }
     }
 
-    private static void leaderElection() throws InterruptedException {
+    private void leaderElection() {
         createClusters();
     }
 
-    private static void createClusters() throws InterruptedException {
+    private void createClusters() {
         int conflictResoluter = 0;
         for (Node node : NODE_LIST) {
 
@@ -161,6 +158,15 @@ public class NodeManager {
 
         });
         thread.start();
+    }
+
+    public void killSystem() {
+        for (Thread nodeThread : runningNodes) {
+            nodeThread.interrupt();
+        }
+        for (Node node : NODE_LIST) {
+            node.kill();
+        }
     }
 
 }
