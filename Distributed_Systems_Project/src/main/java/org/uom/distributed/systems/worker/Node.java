@@ -33,7 +33,7 @@ public class Node implements Runnable {
     }
 
     public WebSocket getWSLogConnection() {
-        return common_con;
+        return log_con;
     }
     private Thread workerThread;
     private WebSocket common_con;
