@@ -456,8 +456,10 @@ public class FollowerMiddleware implements IMiddleware {
                     LOGGER.info(host.getNodeName() + " exited from the election since COORDINATOR received");
                     if (host.getNodeName().equals(message.getRecipientOrGroupID())) {
                         this.setLeader(fields.get("NEW_LEADER"));
+                    } else {
+                        System.out.println(message.getRecipientOrGroupID());
                     }
-                    LOGGER.info(host.getNodeName() + " this follower received Coordinator from " + fields.get("SENDER") + " : NEW_LEADER is " + this.leader);
+                    LOGGER.info(host.getNodeName() + " this follower received Coordinator from " + fields.get("SENDER") + " : NEW_LEADER is " + fields.get("NEW_LEADER") +  this.leader);
                     break;
                 }
             case "ADD_GROUP_MEMBER" :

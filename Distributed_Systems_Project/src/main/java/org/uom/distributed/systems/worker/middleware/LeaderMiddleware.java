@@ -92,7 +92,7 @@ public class LeaderMiddleware implements IMiddleware {
                 int electionInitiatorBullyID = Integer.parseInt(fields.get("CANDIDATE_BULLY_ID"));
                 if (electionInitiatorBullyID < host.getNodeBullyID()) {
                     message = new Message(MessageType.COORDINATOR, fields.get("SENDER"));
-                    host.sendMessage(message);
+                    host.sendMessage(message.addField("NEW_LEADER", this.host.getNodeName()));
                 }
                 LOGGER.info("Leader " + host.getNodeName() + " received Election message.");
                 break;

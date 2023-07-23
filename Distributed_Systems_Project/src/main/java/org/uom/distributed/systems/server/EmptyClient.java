@@ -1,4 +1,4 @@
-package org.uom.distributed.systems;
+package org.uom.distributed.systems.server;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
-import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
 public class EmptyClient extends WebSocketClient {
