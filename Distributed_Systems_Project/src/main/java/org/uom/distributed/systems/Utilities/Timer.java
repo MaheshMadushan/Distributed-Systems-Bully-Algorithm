@@ -1,7 +1,5 @@
 package org.uom.distributed.systems.Utilities;
 
-import org.uom.distributed.systems.Config;
-
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Timer {

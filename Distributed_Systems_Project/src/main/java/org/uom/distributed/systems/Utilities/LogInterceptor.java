@@ -1,4 +1,4 @@
-package org.uom.distributed.systems;
+package org.uom.distributed.systems.Utilities;
 
 import org.java_websocket.WebSocket;
 import org.java_websocket.server.WebSocketServer;

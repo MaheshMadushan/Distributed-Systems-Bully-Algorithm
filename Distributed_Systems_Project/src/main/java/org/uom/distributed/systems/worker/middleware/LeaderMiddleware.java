@@ -1,8 +1,8 @@
 package org.uom.distributed.systems.worker.middleware;
 
 import org.json.JSONObject;
-import org.uom.distributed.systems.Config;
-import org.uom.distributed.systems.LogInterceptor;
+import org.uom.distributed.systems.Utilities.Config;
+import org.uom.distributed.systems.Utilities.LogInterceptor;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageType;
 import org.uom.distributed.systems.worker.IMiddleware;

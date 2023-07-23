@@ -2,8 +2,8 @@ package org.uom.distributed.systems.worker;
 
 import org.java_websocket.WebSocket;
 import org.json.JSONObject;
-import org.uom.distributed.systems.Config;
-import org.uom.distributed.systems.LogInterceptor;
+import org.uom.distributed.systems.Utilities.Config;
+import org.uom.distributed.systems.Utilities.LogInterceptor;
 import org.uom.distributed.systems.messaging.Message;
 import org.uom.distributed.systems.messaging.MessageService;
 import org.uom.distributed.systems.worker.middleware.FollowerMiddleware;

@@ -17,6 +17,6 @@ public class Main {
         Thread serverThread = new Thread(server::run);
         serverThread.start();
 
-        Thread.sleep(10000);
+        serverThread.join();
     }
 }

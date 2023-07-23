@@ -9,7 +9,7 @@ import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 import org.json.JSONObject;
-import org.uom.distributed.systems.NodeManager;
+import org.uom.distributed.systems.Utilities.NodeManager;
 
 public class MonitoringServer extends WebSocketServer {
     private static int client_count = 0;
@@ -73,12 +73,4 @@ public class MonitoringServer extends WebSocketServer {
         System.out.println("server started successfully");
     }
 
-    public static void main(String[] args) throws InterruptedException {
-        String host = "localhost";
-        int port = 8887;
-
-        WebSocketServer server = new MonitoringServer(new InetSocketAddress(host, port));
-        server.run();
-
-    }
 }

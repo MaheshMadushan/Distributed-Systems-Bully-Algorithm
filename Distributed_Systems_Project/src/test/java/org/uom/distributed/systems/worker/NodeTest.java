@@ -1,7 +1,5 @@
 package org.uom.distributed.systems.worker;
 
-import org.uom.distributed.systems.NodeManager;
-
 class NodeTest {
     @org.junit.jupiter.api.Test
     void onMessageTest() throws InterruptedException {
