@@ -145,6 +145,9 @@
       else if(message.MESSAGE_TYPE === "LOG") {
         console.log(message.LOG_MESSAGE)
       }
+      else if(message.MESSAGE_TYPE === "ERROR") {
+        window.alert(message.MESSAGE)
+      }
     });
   
     socket.addEventListener("error", (event) => {
