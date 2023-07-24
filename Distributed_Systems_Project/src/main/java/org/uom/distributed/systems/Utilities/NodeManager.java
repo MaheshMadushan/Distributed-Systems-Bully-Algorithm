@@ -17,22 +17,8 @@ public class NodeManager {
     private final List<Node> leaders = new ArrayList<>();
     private final List<Thread> runningNodes = new ArrayList<>();
     private final MessageService MESSAGE_SERVICE = new MessageService();
-    private WebSocket common_conn = null;
-    private WebSocket log_conn = null;
-
-    public NodeManager(WebSocket common_conn, WebSocket log_conn) {
-        this.common_conn = common_conn;
-        this.log_conn = log_conn;
-    }
-
-    public void initiateSystem(int[][] inputs) throws InterruptedException {
-        addNodesToList(inputs);
-        registerNodesInRegistry();
-        determineEligibleNeighboursForNodes();
-        startNodes();
-        leaderElection();
-    }
-
+    private WebSocket common_conn;
+    private WebSocket log_conn;
     private void startNodes() {
         for (Node node : NODE_LIST) {
             Thread nodeThread = new Thread(node);
@@ -41,21 +27,35 @@ public class NodeManager {
         }
     }
 
+    public NodeManager(WebSocket common_conn, WebSocket log_conn) {
+        this.common_conn = common_conn;
+        this.log_conn = log_conn;
+    }
+
+
+    private void addNodesToList(List<List<Integer>> nodes) {
+        for (List<Integer> ints : nodes) {
+            short ENERGY_LEVEL = 2;
+            short y = 1;
+            short x = 0;
+            System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints.get(x), ints.get(y), ints.get(ENERGY_LEVEL));
+            NODE_LIST.add(new Node(ints.get(x), ints.get(y), ints.get(ENERGY_LEVEL), common_conn, log_conn));
+        }
+    }
+
+    public void initiateSystem(List<List<Integer>> nodes) throws InterruptedException {
+        addNodesToList(nodes);
+        registerNodesInRegistry();
+        determineEligibleNeighboursForNodes();
+        startNodes();
+        leaderElection();
+    }
 
     private double calculatedEuclideanDistance (Node node1, Node node2) {
         double euclideanDistanceSquared = Math.pow(node1.getX() - node2.getX(), 2) + Math.pow(node1.getY() - node2.getY(), 2);
         return Math.pow(euclideanDistanceSquared, 0.5);
     }
 
-    private void addNodesToList(int[][] inputs) {
-        for (int[] ints : inputs) {
-            short ENERGY_LEVEL = 2;
-            short y = 1;
-            short x = 0;
-            System.out.printf("Provisioning Node: X=%d | Y=%d | Energy Level=%d \n", ints[x], ints[y], ints[ENERGY_LEVEL]);
-            NODE_LIST.add(new Node(ints[x], ints[y], ints[ENERGY_LEVEL], common_conn, log_conn));
-        }
-    }
 
     private void registerNodesInRegistry() {
         for (Node node : NODE_LIST) {

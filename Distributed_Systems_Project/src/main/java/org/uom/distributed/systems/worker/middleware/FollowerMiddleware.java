@@ -180,7 +180,7 @@ public class FollowerMiddleware implements IMiddleware {
 
         Message message;
         try {
-            message = electionDecisionCommunicationBlockinqQueue.poll(5000, TimeUnit.MILLISECONDS);
+            message = electionDecisionCommunicationBlockinqQueue.poll(10000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

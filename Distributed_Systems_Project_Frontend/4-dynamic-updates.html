@@ -39,7 +39,7 @@
           if(value.id === message.NODE_NAME){
             value.group = message.GROUP_ID,
             value.status = message.ASSIGNED_AS,
-            value.label = message.BULLY_ID
+            value.label = "PID: " + message.BULLY_ID + " NAME: " + message.NODE_NAME
           }
         })
   
@@ -365,8 +365,6 @@
         .attr('r', 10)
         .attr('fill', getNodeColor2)
         .call(dragDrop)
-        // we link the selectNode method here
-        // to update the graph on every click
         .on('click', selectNode)
   
       nodeElements = nodeEnter.merge(nodeElements)
@@ -381,9 +379,9 @@
         .enter()
         .append('text')
         .text(function (node) { return node.label })
-        .attr('font-size', 10)
-        .attr('dx', 15)
-        .attr('dy', 4)
+        .attr('font-size', 4)
+        .attr('dx', 0)
+        .attr('dy', 0)
   
       textElements = textEnter.merge(textElements)
       
