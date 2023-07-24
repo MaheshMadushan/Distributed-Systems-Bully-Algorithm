@@ -103,7 +103,7 @@ public class NodeManager {
         }
 
         // Assign BullyID to nodes to use in bully algorithm
-        int bullyID = LEADER_ELIGIBILITY_MAP.size();
+        int bullyID = LEADER_ELIGIBILITY_MAP.size() - 1;
         for (Map.Entry<Double, Node> entry : LEADER_ELIGIBILITY_MAP.entrySet()) {
             entry.getValue().setNodeBullyID(bullyID--);
         }

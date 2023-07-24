@@ -191,9 +191,11 @@ public class Node implements Runnable {
                 Thread.sleep(Config.UNIT_TIME);
                 ENERGY_LEVEL.decrementAndGet();
 //                JSONObject response = new JSONObject()
+//                        .put("MESSAGE_TYPE", "STATUS")
 //                        .put("ENERGY_LEVEL", ENERGY_LEVEL.get())
-//                        .put("NODE_NAME", this.nodeName);
-//                webSocketServer.send;(response.toString());
+//                        .put("NODE_NAME", this.nodeName)
+//                        .put("BULLY_ID", this.nodeBullyID);
+//                log_con.send(response.toString());
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }

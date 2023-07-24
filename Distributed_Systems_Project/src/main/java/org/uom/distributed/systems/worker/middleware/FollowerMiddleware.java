@@ -28,7 +28,7 @@ public class FollowerMiddleware implements IMiddleware {
     private final BlockingQueue<Message> messageSendingBlockingQueue
             = new LinkedBlockingQueue<>();
     private final AtomicInteger counter = new AtomicInteger(15);
-    private final Timer timer = new Timer(15);
+    private final Timer timer = new Timer(20);
     private final AtomicBoolean timerThreadInterrupted = new AtomicBoolean(false);
     private final AtomicBoolean electionInProgress = new AtomicBoolean(false);
     private final AtomicBoolean isCandidate = new AtomicBoolean(false);
@@ -74,8 +74,13 @@ public class FollowerMiddleware implements IMiddleware {
                         host.getWSCommonConnection().send(response.toString());
 
                         for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
+
                             message = new Message(MessageType.OK, innocentIDAndNodeAddress.getValue());
                             host.sendMessage(message);
+
+                        }
+
+                        for (Map.Entry<Integer, String> innocentIDAndNodeAddress : groupMembers.entrySet()) {
 
                             message = new Message(MessageType.COORDINATOR, innocentIDAndNodeAddress.getValue());
                             message.addField("NEW_LEADER", this.host.getNodeName());
@@ -184,6 +189,11 @@ public class FollowerMiddleware implements IMiddleware {
             response = new JSONObject()
                     .put("ASSIGNED_AS_LEADER", true)
                     .put("TIMEOUT", true);
+
+            // try again for leader
+//            Message coordMessage = new Message(MessageType.COORDINATOR, this.leader);
+//            coordMessage.addField("NEW_LEADER", this.host.getNodeName());
+//            host.sendMessage(coordMessage);
 
             LOGGER.info("Elected this node " + host.getNodeName() + " since still no OK or COORDINATOR message received");
 

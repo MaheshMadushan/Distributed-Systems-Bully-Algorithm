@@ -34,6 +34,7 @@ public class IdleState implements IMiddleware {
                         .put("MESSAGE_TYPE", "INITIAL_GROUPING")
                         .put("ASSIGNED_AS", "LEADER")
                         .put("NODE_NAME", host.getNodeName())
+                        .put("BULLY_ID", host.getNodeBullyID())
                         .put("GROUP_ID", fields.get("GROUP_ID"));
                 this.host.getWSCommonConnection().send(response.toString());
                 LOGGER.info(host.getNodeName() + " with bully id " + host.getNodeBullyID() + " " + "Assigned as Leader.");
@@ -47,6 +48,7 @@ public class IdleState implements IMiddleware {
                         .put("MESSAGE_TYPE", "INITIAL_GROUPING")
                         .put("ASSIGNED_AS", "FOLLOWER")
                         .put("LEADER", fields.get("LEADER"))
+                        .put("BULLY_ID", host.getNodeBullyID())
                         .put("NODE_NAME", host.getNodeName())
                         .put("GROUP_ID", fields.get("GROUP_ID"));
                 this.host.getWSCommonConnection().send(response.toString());
