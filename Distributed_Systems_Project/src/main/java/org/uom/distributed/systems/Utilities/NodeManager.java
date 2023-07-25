@@ -155,7 +155,6 @@ public class NodeManager {
                 throw new RuntimeException(e);
             }
             leaders.get(0).kill();
-
         });
         thread.start();
     }
