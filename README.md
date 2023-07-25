@@ -20,15 +20,15 @@ Bully algorithm simulation
 
 Leader Election Visualization
 
-![plot](.\Distributed_Systems_Project\src\main\resourcesaa.png)
+![plot](.\Distributed_Systems_Project\src\main\resources\aa.png)
 Step - 01
-![plot](.\Distributed_Systems_Project\src\main\resourcesa.png)
+![plot](.\Distributed_Systems_Project\src\main\resources\a.png)
 Step - 02
-![plot](.\Distributed_Systems_Project\src\main\resourcesb.png)
+![plot](.\Distributed_Systems_Project\src\main\resources\b.png)
 Step - 03
-![plot](.\Distributed_Systems_Project\src\main\resourcesc.png)
+![plot](.\Distributed_Systems_Project\src\main\resources\c.png)
 Step - 04
-![plot](.\Distributed_Systems_Project\src\main\resourcesd.png)
+![plot](.\Distributed_Systems_Project\src\main\resources\d.png)
 
 
 
