@@ -350,9 +350,12 @@ public class FollowerMiddleware implements IMiddleware {
                     if(fields.containsKey("FOLLOWERS")) {
                         String[] followers = fields.get("FOLLOWERS").split(",");
                         for (String follower : followers) {
-                            int bullyID = Integer.parseInt(follower.split("=")[0]);
-                            String name = follower.split("=")[1];
-                            leaderMiddleware.addFollower(bullyID, name);
+                            String[] nameAndID = follower.split("=");
+                            if(nameAndID.length == 2) {
+                                int bullyID = Integer.parseInt(nameAndID[0]);
+                                String name = nameAndID[1];
+                                leaderMiddleware.addFollower(bullyID, name);
+                            }
                         }
                     }
                     host.stopRunningMiddlewareProcessGracefully();
