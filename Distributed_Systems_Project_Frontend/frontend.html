@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<!DOCTYPE html>
+<html>
+
+<body>
+  <svg width="960" height="600"></svg>
+  <script src="d3.v4.min.js"></script>
+  
+  <script>
+    var aLeader = null;
+    var leadLeader = null;
+    var nodes = []
+    var links = []
+
+    const socket = new WebSocket("ws://localhost:8887");
+  
+    socket.addEventListener("open", () => {
+      socket.send(JSON.stringify({SOCKET : "COMMON"}))
+        console.log("WebSocket connection established.");
+    });
+  
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if (message.MESSAGE_TYPE == "PROVISION") {
+        nodes.push(
+          {
+            id : message.NODE_NAME,
+            label : message.NODE_NAME,
+            group : 0,
+            status : message.STATUS,
+            energy : message.ENERGY_LEVEL,
+            beacon : "RESET"
+          }
+        )
+      } 
+      else if (message.MESSAGE_TYPE === "INITIAL_GROUPING") {
+        nodes.forEach((value) => {
+          if(value.id === message.NODE_NAME){
+            value.group = message.GROUP_ID,
+            value.status = message.ASSIGNED_AS,
+            value.label = "PID: " + message.BULLY_ID + " NAME: " + message.NODE_NAME
+          }
+        })
+  
+        if (message.ASSIGNED_AS === "FOLLOWER"){
+          links.push(
+            {
+              source : message.LEADER,
+              target : message.NODE_NAME,
+              strength : 0.88
+            }
+          )
+        } 
+        else if (message.ASSIGNED_AS === "LEADER") {
+          if (aLeader != null) {
+            links.push({
+              source : aLeader,
+              target : message.NODE_NAME,
+              strength : 0.1
+            })
+          } else {
+            leadLeader = message.NODE_NAME
+          }
+          aLeader = message.NODE_NAME
+          links.push({
+              source : aLeader,
+              target : leadLeader,
+              strength : 0.1
+            })
+        }
+      }
+      else if(message.MESSAGE_TYPE === "BEACON") {
+        nodes.forEach((value, index) => {
+          if(value.id === message.BEACON_SENT_TO){
+            resetBeacon(index)
+          }
+        })
+      }
+      else if(message.MESSAGE_TYPE === "EVICTION") {
+        nodes.forEach((value, index) => {
+          if(value.id === message.NODE_NAME){
+            value.status = "IDLE"
+            newUpdates()
+          }
+        })
+      }
+      else if(message.MESSAGE_TYPE === "ELECTION") {
+        if (message.BEACON_TIMER_EXECUTED === true)
+          nodes.forEach((value, index) => {
+            if(value.id === message.NODE_NAME){
+              value.status = "BEACON_TIMER_ELECTION"
+              newUpdates()
+            }
+          })
+      }
+      else if(message.MESSAGE_TYPE === "POST_ELECTION_LEADER") {
+        var newSourceNodeFroGroup = null
+        nodes.forEach((value, index) => {
+            if(value.id === message.NODE_NAME){
+              value.status = "LEADER"
+              newSourceNodeFroGroup = value;
+            }
+          })
+        var prevLeader = null
+        var cpLinks = [...links]
+        cpLinks.forEach((value) => {
+          if(value.target.id === message.NODE_NAME) {
+            prevLeader = value.source;
+          }
+        })
+        cpLinks.forEach((value) => {
+          if(value.source.id === prevLeader.id) {
+            value.source = newSourceNodeFroGroup;
+          }
+          if (value.target.id === prevLeader.id) {
+            value.target = newSourceNodeFroGroup;
+          }
+          if(value.target.id === message.NODE_NAME && value.source.id === message.NODE_NAME) {
+            value.target = prevLeader;
+          }
+        })
+        links = [...cpLinks]
+        console.log(links)
+        // for (let index = 0; index < links.length; index++) {
+        //   links.pop()
+        //   links.push(cpLinks[index])
+        // }
+        updateSimulation()
+  
+      }
+      else if(message.MESSAGE_TYPE === "COORDINATOR") {
+        nodes.forEach((value, index) => {
+            if(value.id === message.NODE_NAME){
+              value.status = "COORDINATOR"
+            }
+          })
+      }
+      else if(message.MESSAGE_TYPE === "OK") {
+        if(message.IN_ELECTION === true) {
+          nodes.forEach((value, index) => {
+            if(value.id === message.NODE_NAME){
+              value.status = "OK"
+            }
+          })
+        } else {
+          nodes.forEach((value, index) => {
+            if(value.id === message.NODE_NAME){
+              value.status = "FOLLOWER"
+            }
+          })
+        }
+        
+      }
+      else if(message.MESSAGE_TYPE === "LOG") {
+        console.log(message.LOG_MESSAGE)
+      }
+      else if(message.MESSAGE_TYPE === "ERROR") {
+        window.alert(message.MESSAGE)
+      }
+    });
+  
+    socket.addEventListener("error", (event) => {
+        console.error("WebSocket error:", event);
+    });
+  
+    socket.addEventListener("close", (event) => {
+      nodes = []
+      links = []
+      updateSimulation()
+      console.log("WebSocket connection closed:", event.code, event.reason);
+    });
+
+    const log_socket = new WebSocket("ws://localhost:8887");
+  
+    log_socket.addEventListener("open", () => {
+      log_socket.send(JSON.stringify({SOCKET : "LOG"}))
+      console.log("WebSocket connection established.");
+    });
+  
+    log_socket.addEventListener("message", (event) => {
+      const message = JSON.parse(event.data);
+      if(message.MESSAGE_TYPE === "LOG") {
+        // console.log(message.LOG_MESSAGE)
+      }
+    });
+  
+    log_socket.addEventListener("error", (event) => {
+        console.error("WebSocket error:", event);
+    });
+  
+    log_socket.addEventListener("close", (event) => {
+      nodes = []
+      links = []
+      updateSimulation()
+      console.log("WebSocket connection closed:", event.code, event.reason);
+    });
+  
+    function getNodeColor2(node) {
+      switch (node.status) {
+        case "IDLE":
+          return 'gray'
+          break;
+        case "LEADER":
+          return 'red'
+          break;
+        case "FOLLOWER":
+          return 'green'
+          break;
+        case "BEACON":
+          return 'blue'
+          break;
+        case "ELECTION":
+          return 'yellow'
+          break;
+        case "COORDINATOR":
+          return 'green'
+          break;
+        case "OK":
+          return 'orange'
+          break;
+        case "BEACON_TIMER_ELECTION":
+          return 'purple'
+        default:
+          break;
+      }
+    }
+  
+    function getNodeColor(node, neighbors) {
+  
+      if (node.beacon === "SET") {
+        return 'blue'
+      } else if (node.beacon === "RESET") {
+        return getNodeColor2(node)
+      }
+  
+      return getNodeColor2(node)
+    }
+  
+    function getNeighbors(node) {
+      return baseLinks.reduce(function (neighbors, link) {
+          if (link.target.id === node.id) {
+            neighbors.push(link.source.id)
+          } else if (link.source.id === node.id) {
+            neighbors.push(link.target.id)
+          }
+          return neighbors
+        },
+        [node.id]
+      )
+    }
+  
+    function isNeighborLink(node, link) {
+      return link.target.id === node.id || link.source.id === node.id
+    }
+  
+    function getLinkColor(node, link) {
+      return isNeighborLink(node, link) ? 'green' : '#E5E5E5'
+    }
+  
+    function getTextColor(node, neighbors) {
+      return Array.isArray(neighbors) && neighbors.indexOf(node.id) > -1 ? 'green' : 'black'
+    }
+  
+    var width = window.innerWidth
+    var height = window.innerHeight
+  
+    var svg = d3.select('svg')
+    svg.attr('width', width).attr('height', height)
+  
+    var linkElements,
+      nodeElements,
+      textElements
+  
+    // we use svg groups to logically group the elements together
+    var linkGroup = svg.append('g').attr('class', 'links')
+    var nodeGroup = svg.append('g').attr('class', 'nodes')
+    var textGroup = svg.append('g').attr('class', 'texts')
+  
+    // we use this reference to select/deselect
+    // after clicking the same element twice
+    var selectedId
+  
+    // simulation setup with all forces
+    var linkForce = d3
+      .forceLink()
+      .id(function (link) { return link.id })
+      .strength(function (link) { return link.strength })
+  
+    var simulation = d3
+      .forceSimulation()
+      .force('link', linkForce)
+      .force('charge', d3.forceManyBody().strength(-120))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+  
+    var dragDrop = d3.drag().on('start', function (node) {
+      node.fx = node.x
+      node.fy = node.y
+    }).on('drag', function (node) {
+      simulation.alphaTarget(0.7).restart()
+      node.fx = d3.event.x
+      node.fy = d3.event.y
+    }).on('end', function (node) {
+      if (!d3.event.active) {
+        simulation.alphaTarget(0)
+      }
+      node.fx = null
+      node.fy = null
+    })
+  
+    // select node is called on every click
+    // we either update the data according to the selection
+    // or reset the data if the same node is clicked twice
+    function selectNode(selectedNode) {
+      if (selectedId === selectedNode.id) {
+        selectedId = undefined
+        resetData()
+        updateSimulation()
+      } else {
+        selectedId = selectedNode.id
+        updateData(selectedNode)
+        updateSimulation()
+      }
+  
+      var neighbors = getNeighbors(selectedNode)
+  
+      // we modify the styles to highlight selected nodes
+      nodeElements.attr('fill', function (node) { return getNodeColor(node, neighbors) })
+      textElements.attr('fill', function (node) { return getTextColor(node, neighbors) })
+      linkElements.attr('stroke', function (link) { return getLinkColor(selectedNode, link) })
+    }
+  
+    function newUpdates() {
+      nodeElements.attr('fill', function (node) { return getNodeColor(node) })
+      // textElements.attr('fill', function (node) { return getTextColor(node, neighbors) })
+      // linkElements.attr('stroke', function (link) { return getLinkColor(selectedNode, link) })
+    }
+  
+  
+    function updateGraph() {
+      // links
+      linkElements = linkGroup.selectAll('line')
+        .data(links, function (link) {
+          return link.target.id + link.source.id
+        })
+  
+      linkElements.exit().remove()
+  
+      var linkEnter = linkElements
+        .enter().append('line')
+        .attr('stroke-width', 1)
+        .attr('stroke', 'rgba(50, 50, 50, 0.2)')
+  
+      linkElements = linkEnter.merge(linkElements)
+  
+      // nodes
+      nodeElements = nodeGroup.selectAll('circle')
+        .data(nodes, function (node) { return node.id })
+  
+      nodeElements.exit().remove()
+  
+      var nodeEnter = nodeElements
+        .enter()
+        .append('circle')
+        .attr('r', 10)
+        .attr('fill', getNodeColor2)
+        .call(dragDrop)
+        .on('click', selectNode)
+  
+      nodeElements = nodeEnter.merge(nodeElements)
+  
+      // texts
+      textElements = textGroup.selectAll('text')
+        .data(nodes, function (node) { return node.id })
+  
+      textElements.exit().remove()
+  
+      var textEnter = textElements
+        .enter()
+        .append('text')
+        .text(function (node) { return node.label })
+        .attr('font-size', 4)
+        .attr('dx', 0)
+        .attr('dy', 0)
+  
+      textElements = textEnter.merge(textElements)
+      
+    }
+  
+    function updateSimulation() {
+      if(nodes.length === 0 || links.length === 0) {
+        return;
+      }
+      updateGraph()
+  
+      simulation.nodes(nodes).on('tick', () => {
+        nodeElements
+          .attr('cx', function (node) { return node.x })
+          .attr('cy', function (node) { return node.y })
+        textElements
+          .attr('x', function (node) { return node.x })
+          .attr('y', function (node) { return node.y })
+        linkElements
+          .attr('x1', function (link) { return link.source.x })
+          .attr('y1', function (link) { return link.source.y })
+          .attr('x2', function (link) { return link.target.x })
+          .attr('y2', function (link) { return link.target.y })
+      })
+  
+      simulation.force('link').links(links)
+      simulation.alphaTarget(0.7).restart()
+    }
+  
+    // last but not least, we call updateSimulation
+    // to trigger the initial render
+  
+    function delayedExecution() {
+      updateSimulation()
+      // Add your code here that you want to execute after 10 seconds.
+    }
+  
+    // Schedule the function to execute after 10 seconds (10000 milliseconds).
+    setTimeout(delayedExecution, 2000);
+  
+    async function resetBeacon(index) {
+      if(nodes[index].status === "IDLE") {
+        return
+      }
+      nodes[index].beacon = "SET"
+      newUpdates()
+      await sleep(2000);
+      nodes[index].beacon = "RESET"
+      newUpdates()
+    }
+  
+    // Schedule the function to execute after 10 seconds (10000 milliseconds).
+  
+    function sleep(ms) {
+          return new Promise(resolve => setTimeout(resolve, ms));
+      }
+  </script>
+</body>
+</html>
+
