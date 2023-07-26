@@ -6,7 +6,7 @@
 
     <groupId>org.uom.distributed.systems</groupId>
     <artifactId>Distributed_Systems_Project_18</artifactId>
-    <version>2.0.8</version>
+    <version>2.0.9</version>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
