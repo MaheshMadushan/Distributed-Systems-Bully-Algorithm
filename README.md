@@ -2,8 +2,7 @@
 Bully algorithm simulation
 
 [![](https://visitcount.itsvg.in/api?id=Mahesh&label=Profile%20Views&color=0&icon=0&pretty=false)](https://visitcount.itsvg.in)
-- Extract/Copy the *Executables* folder into your local storage.
-- ` `Make sure you have installed java 11 on your pc. 
+- Extract/Copy the *Executables* folder into your local storage. Make sure you have installed java 11 on your pc. 
 - Move into the *Executables* folder and open a command line window on that folder.
 - Run following command (1).
   - *java -jar Distributed\_Systems\_Project\_18-2.0.8.jar --file="inputs/input1.txt"* 
