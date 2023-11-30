@@ -19,7 +19,7 @@ public class LogInterceptor {
 
     public void info(String s) {
         logger.info(s);
-//        logMessage.put("LOG_MESSAGE", s);
-//        conn.send(logMessage.toString());
+        logMessage.put("LOG_MESSAGE", s);
+        conn.send(logMessage.toString());
     }
 }

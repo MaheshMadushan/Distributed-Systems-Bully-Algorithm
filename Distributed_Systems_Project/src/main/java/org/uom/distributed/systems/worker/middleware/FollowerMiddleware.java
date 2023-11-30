@@ -50,7 +50,8 @@ public class FollowerMiddleware implements IMiddleware {
                                     + " assuming leader is unresponsive."
                     );
 
-                    JSONObject response = new JSONObject();
+                    new JSONObject();
+                    JSONObject response;
 
                     List<Map.Entry<Integer, String>> bullies = groupMembers
                             .entrySet()

@@ -17,7 +17,7 @@ public class Timer {
             try {
                 Thread.sleep(Config.UNIT_TIME);
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+//                throw new RuntimeException(e);
             }
         }
     }
